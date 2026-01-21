@@ -66,8 +66,9 @@ void Camera::Zoom(float delta) {
     m_Distance *= zoomFactor;
 
     // Clamp distance to reasonable range
+    // Increased max distance to support large images (e.g., 3000x3000)
     if (m_Distance < 0.5f) m_Distance = 0.5f;
-    if (m_Distance > 200.0f) m_Distance = 200.0f;
+    if (m_Distance > 1000.0f) m_Distance = 1000.0f;  // Increased from 200 to 1000
 
     glm::vec3 direction = glm::normalize(m_Position - m_Target);
     m_Position = m_Target + direction * m_Distance;
@@ -90,6 +91,29 @@ void Camera::Orbit(float deltaX, float deltaY) {
     if (m_Pitch < -89.0f) m_Pitch = -89.0f;
 
     // Calculate new position
+    float x = m_Distance * cos(glm::radians(m_Pitch)) * cos(glm::radians(m_Yaw));
+    float y = m_Distance * sin(glm::radians(m_Pitch));
+    float z = m_Distance * cos(glm::radians(m_Pitch)) * sin(glm::radians(m_Yaw));
+
+    m_Position = m_Target + glm::vec3(x, y, z);
+}
+
+void Camera::FrameView(float objectSize) {
+    // Calculate optimal distance to frame an object of given size
+    // Using FOV to determine how far back the camera needs to be
+    float halfFOV = glm::radians(m_FOV * 0.5f);
+    float distance = (objectSize * 0.5f) / tan(halfFOV);
+
+    // Add some padding (1.5x)
+    distance *= 1.5f;
+
+    // Clamp to valid range
+    if (distance < 0.5f) distance = 0.5f;
+    if (distance > 1000.0f) distance = 1000.0f;
+
+    m_Distance = distance;
+
+    // Update position based on current angles
     float x = m_Distance * cos(glm::radians(m_Pitch)) * cos(glm::radians(m_Yaw));
     float y = m_Distance * sin(glm::radians(m_Pitch));
     float z = m_Distance * cos(glm::radians(m_Pitch)) * sin(glm::radians(m_Yaw));

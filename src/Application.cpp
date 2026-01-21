@@ -6,6 +6,7 @@
 #include "Geometry/PointCloud.h"
 #include "UI/FileBrowser.h"
 #include <iostream>
+#include <cmath>
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -212,6 +213,18 @@ void Application::LoadImageAndGeneratePoints(const std::string& filepath) {
     m_ImageLoader->GeneratePointCloudWithColors(positions, colors, scaleX, scaleY, scaleZ);
 
     std::cout << "Creating point cloud with " << positions.size() << " points..." << std::endl;
+
+    // Calculate image size in world coordinates
+    float imageWidth = m_ImageLoader->GetWidth() * scaleX;
+    float imageDepth = m_ImageLoader->GetHeight() * scaleZ;
+    float imageDiagonal = std::sqrt(imageWidth * imageWidth + imageDepth * imageDepth);
+
+    // Auto-frame the camera to view the entire image
+    // Only adjust if this is the first image or if the image is larger than current view
+    if (m_ImagePointsMap.empty() || imageDiagonal > 50.0f) {
+        m_Camera->FrameView(imageDiagonal);
+        std::cout << "Camera adjusted to frame image (size: " << imageDiagonal << " units)" << std::endl;
+    }
 
     // Create a single PointCloud object for all points
     auto pointCloud = std::make_shared<PointCloud>();

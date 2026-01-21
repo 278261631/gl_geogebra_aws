@@ -28,6 +28,9 @@ public:
     void Pan(float deltaX, float deltaY);
     void Orbit(float deltaX, float deltaY);
 
+    // Frame the view to see an object of given size
+    void FrameView(float objectSize);
+
 private:
     void UpdateProjectionMatrix();
 
