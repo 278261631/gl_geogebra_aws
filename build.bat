@@ -28,3 +28,9 @@ cd ..
 echo Build completed successfully!
 echo Executable location: build\bin\Release\GeoGebra3D.exe
 
+echo Copying DLL files...
+if exist dll (
+    copy /Y dll\*.dll build\bin\Release\ >nul
+    echo DLL files copied.
+)
+

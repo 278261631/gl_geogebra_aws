@@ -2,7 +2,10 @@
 
 #include <string>
 #include <vector>
+#include <memory>
 #include <glm/glm.hpp>
+
+class FitsLoader;
 
 class ImageLoader {
 public:
@@ -12,10 +15,11 @@ public:
     bool LoadImage(const std::string& filepath);
     void UnloadImage();
 
-    bool IsLoaded() const { return m_Data != nullptr; }
+    bool IsLoaded() const { return m_Data != nullptr || m_FitsLoader != nullptr; }
     int GetWidth() const { return m_Width; }
     int GetHeight() const { return m_Height; }
     int GetChannels() const { return m_Channels; }
+    bool IsFits() const { return m_FitsLoader != nullptr; }
 
     // Get pixel value at (x, y) - returns grayscale value [0, 255]
     unsigned char GetPixelValue(int x, int y) const;
@@ -38,9 +42,14 @@ public:
                                       float scaleZ = 1.0f) const;
 
 private:
+    bool LoadStandardImage(const std::string& filepath);
+    bool LoadFitsImage(const std::string& filepath);
+
     unsigned char* m_Data;
     int m_Width;
     int m_Height;
     int m_Channels;
+
+    std::unique_ptr<FitsLoader> m_FitsLoader;
 };
 

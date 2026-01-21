@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(GeoGebra3D VERSION 1.0.0 LANGUAGES CXX)
+project(GeoGebra3D VERSION 1.0.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,6 +11,23 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # Options
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
+
+# Include FetchContent for downloading dependencies
+include(FetchContent)
+
+# Download and build cfitsio
+message(STATUS "Fetching cfitsio...")
+FetchContent_Declare(
+    cfitsio
+    URL https://heasarc.gsfc.nasa.gov/FTP/software/fitsio/c/cfitsio-4.6.3.tar.gz
+)
+
+# Configure cfitsio options
+set(USE_PTHREADS OFF CACHE BOOL "" FORCE)
+set(TESTS OFF CACHE BOOL "" FORCE)
+set(UTILS OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(cfitsio)
 
 # Find packages
 find_package(OpenGL REQUIRED)
@@ -57,6 +74,7 @@ set(SOURCES
     src/GeometryObject.cpp
     src/InputHandler.cpp
     src/ImageLoader.cpp
+    src/FitsLoader.cpp
     src/UI/UIManager.cpp
     src/UI/Toolbar.cpp
     src/UI/Sidebar.cpp
@@ -83,6 +101,7 @@ set(HEADERS
     include/GeometryObject.h
     include/InputHandler.h
     include/ImageLoader.h
+    include/FitsLoader.h
     include/UI/UIManager.h
     include/UI/Toolbar.h
     include/UI/Sidebar.h
@@ -107,6 +126,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/external/glad/include
     ${CMAKE_CURRENT_SOURCE_DIR}/external/glm
     ${CMAKE_CURRENT_SOURCE_DIR}/external/stb
+    ${cfitsio_SOURCE_DIR}
+    ${cfitsio_BINARY_DIR}
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
@@ -115,6 +136,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     glad
     glm
     imgui
+    cfitsio
 )
 
 # Copy shaders to build directory (currently shaders are embedded in code)

@@ -1,13 +1,16 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "ImageLoader.h"
+#include "FitsLoader.h"
 #include <stb_image.h>
 #include <iostream>
+#include <algorithm>
 
 ImageLoader::ImageLoader()
     : m_Data(nullptr)
     , m_Width(0)
     , m_Height(0)
     , m_Channels(0)
+    , m_FitsLoader(nullptr)
 {
 }
 
@@ -16,6 +19,18 @@ ImageLoader::~ImageLoader() {
 }
 
 bool ImageLoader::LoadImage(const std::string& filepath) {
+    // Check file extension
+    std::string ext = filepath.substr(filepath.find_last_of('.') + 1);
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+    if (ext == "fits" || ext == "fit" || ext == "fts") {
+        return LoadFitsImage(filepath);
+    } else {
+        return LoadStandardImage(filepath);
+    }
+}
+
+bool ImageLoader::LoadStandardImage(const std::string& filepath) {
     UnloadImage();
 
     // Load image with stb_image
@@ -34,17 +49,45 @@ bool ImageLoader::LoadImage(const std::string& filepath) {
     return true;
 }
 
+bool ImageLoader::LoadFitsImage(const std::string& filepath) {
+    UnloadImage();
+
+    m_FitsLoader = std::make_unique<FitsLoader>();
+
+    if (!m_FitsLoader->LoadFits(filepath)) {
+        m_FitsLoader.reset();
+        return false;
+    }
+
+    m_Width = m_FitsLoader->GetWidth();
+    m_Height = m_FitsLoader->GetHeight();
+    m_Channels = 1;  // FITS is grayscale
+
+    return true;
+}
+
 void ImageLoader::UnloadImage() {
     if (m_Data) {
         stbi_image_free(m_Data);
         m_Data = nullptr;
-        m_Width = 0;
-        m_Height = 0;
-        m_Channels = 0;
     }
+
+    if (m_FitsLoader) {
+        m_FitsLoader.reset();
+    }
+
+    m_Width = 0;
+    m_Height = 0;
+    m_Channels = 0;
 }
 
 unsigned char ImageLoader::GetPixelValue(int x, int y) const {
+    if (m_FitsLoader) {
+        // FITS data
+        float normalized = m_FitsLoader->GetNormalizedPixelValue(x, y);
+        return static_cast<unsigned char>(normalized * 255.0f);
+    }
+
     if (!m_Data || x < 0 || x >= m_Width || y < 0 || y >= m_Height) {
         return 0;
     }
@@ -66,10 +109,19 @@ unsigned char ImageLoader::GetPixelValue(int x, int y) const {
 }
 
 float ImageLoader::GetNormalizedPixelValue(int x, int y) const {
+    if (m_FitsLoader) {
+        return m_FitsLoader->GetNormalizedPixelValue(x, y);
+    }
     return GetPixelValue(x, y) / 255.0f;
 }
 
 glm::vec3 ImageLoader::GetPixelColor(int x, int y) const {
+    if (m_FitsLoader) {
+        float r, g, b;
+        m_FitsLoader->GetPixelColor(x, y, r, g, b);
+        return glm::vec3(r, g, b);
+    }
+
     if (!m_Data || x < 0 || x >= m_Width || y < 0 || y >= m_Height) {
         return glm::vec3(0.0f);
     }
@@ -94,7 +146,7 @@ glm::vec3 ImageLoader::GetPixelColor(int x, int y) const {
 std::vector<glm::vec3> ImageLoader::GeneratePointCloud(float scaleX, float scaleY, float scaleZ) const {
     std::vector<glm::vec3> points;
 
-    if (!m_Data) {
+    if (!IsLoaded()) {
         return points;
     }
 
@@ -131,7 +183,7 @@ void ImageLoader::GeneratePointCloudWithColors(std::vector<glm::vec3>& positions
     positions.clear();
     colors.clear();
 
-    if (!m_Data) {
+    if (!IsLoaded()) {
         return;
     }
 
