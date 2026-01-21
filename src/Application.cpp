@@ -199,38 +199,23 @@ void Application::LoadImageAndGeneratePoints(const std::string& filepath) {
         return;
     }
 
-    // Generate point cloud from image
+    // Generate point cloud from image with original colors
     // Now: pixel(x,y) -> 3D(x,z), pixel value -> y height
     float scaleX = 0.1f;  // Scale for X (pixel X -> world X)
     float scaleY = 10.0f; // Scale for Y (pixel value -> world Y height)
     float scaleZ = 0.1f;  // Scale for Z (pixel Y -> world Z)
 
-    auto points = m_ImageLoader->GeneratePointCloud(scaleX, scaleY, scaleZ);
-
-    std::cout << "Creating point cloud with " << points.size() << " points..." << std::endl;
-
-    // Prepare colors based on Y value (height)
+    std::vector<glm::vec3> positions;
     std::vector<glm::vec4> colors;
-    colors.reserve(points.size());
 
-    for (const auto& pos : points) {
-        // Color based on Y value (height)
-        float normalizedY = pos.y / scaleY;  // 0 to 1
-        glm::vec4 color;
+    // Use the new method that preserves original colors
+    m_ImageLoader->GeneratePointCloudWithColors(positions, colors, scaleX, scaleY, scaleZ);
 
-        // Color gradient: blue (low) -> green -> red (high)
-        if (normalizedY < 0.5f) {
-            color = glm::vec4(0.0f, normalizedY * 2.0f, 1.0f - normalizedY * 2.0f, 1.0f);
-        } else {
-            color = glm::vec4((normalizedY - 0.5f) * 2.0f, 1.0f - (normalizedY - 0.5f) * 2.0f, 0.0f, 1.0f);
-        }
-
-        colors.push_back(color);
-    }
+    std::cout << "Creating point cloud with " << positions.size() << " points..." << std::endl;
 
     // Create a single PointCloud object for all points
     auto pointCloud = std::make_shared<PointCloud>();
-    pointCloud->SetPointData(points, colors);
+    pointCloud->SetPointData(positions, colors);
     pointCloud->SetPointSize(3.0f);
     pointCloud->SetName("PointCloud_" + filepath);
     pointCloud->Initialize();
@@ -242,7 +227,7 @@ void Application::LoadImageAndGeneratePoints(const std::string& filepath) {
     imageObjects.push_back(pointCloud);
     m_ImagePointsMap[filepath] = imageObjects;
 
-    std::cout << "Point cloud created with " << points.size() << " points (1 draw call)" << std::endl;
+    std::cout << "Point cloud created with " << positions.size() << " points (1 draw call)" << std::endl;
 }
 
 void Application::RemoveImagePoints(const std::string& filepath) {
