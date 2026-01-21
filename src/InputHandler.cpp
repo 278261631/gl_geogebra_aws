@@ -104,7 +104,8 @@ void InputHandler::CursorPosCallback(GLFWwindow* window, double xpos, double ypo
 
 void InputHandler::ScrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
     if (!s_Instance) return;
-    s_Instance->m_Camera->Zoom((float)yoffset * 0.5f);
+    // Pass yoffset directly for exponential zoom
+    s_Instance->m_Camera->Zoom((float)yoffset);
 }
 
 void InputHandler::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {

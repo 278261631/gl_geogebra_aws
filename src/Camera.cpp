@@ -60,9 +60,14 @@ void Camera::Rotate(float yaw, float pitch) {
 }
 
 void Camera::Zoom(float delta) {
-    m_Distance -= delta;
-    if (m_Distance < 1.0f) m_Distance = 1.0f;
-    if (m_Distance > 100.0f) m_Distance = 100.0f;
+    // Exponential zoom: multiply distance by a factor
+    // This provides smooth, intuitive zooming at any distance
+    float zoomFactor = 1.0f - delta * 0.1f;  // 10% per scroll step
+    m_Distance *= zoomFactor;
+
+    // Clamp distance to reasonable range
+    if (m_Distance < 0.5f) m_Distance = 0.5f;
+    if (m_Distance > 200.0f) m_Distance = 200.0f;
 
     glm::vec3 direction = glm::normalize(m_Position - m_Target);
     m_Position = m_Target + direction * m_Distance;
