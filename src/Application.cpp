@@ -6,6 +6,8 @@
 #include "UI/FileBrowser.h"
 #include <iostream>
 #include <GLFW/glfw3.h>
+#include <imgui.h>
+#include <glm/gtc/matrix_transform.hpp>
 
 Application::Application()
     : m_Running(false)
@@ -158,6 +160,10 @@ void Application::Render() {
     // Render UI
     m_UIManager->BeginFrame();
     m_UIManager->Render();
+
+    // Render 3D labels for grid and axes
+    Render3DLabels();
+
     m_UIManager->EndFrame();
 
     m_Renderer->EndFrame();
@@ -243,5 +249,67 @@ void Application::RemoveImagePoints(const std::string& filepath) {
 
     // Remove from map
     m_ImagePointsMap.erase(it);
+}
+
+void Application::Render3DLabels() {
+    if (!m_Camera || !m_Window) return;
+
+    ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+
+    glm::mat4 view = m_Camera->GetViewMatrix();
+    glm::mat4 projection = m_Camera->GetProjectionMatrix();
+    glm::mat4 viewProj = projection * view;
+
+    int windowWidth = m_Window->GetWidth();
+    int windowHeight = m_Window->GetHeight();
+
+    auto worldToScreen = [&](const glm::vec3& worldPos) -> glm::vec2 {
+        glm::vec4 clipSpace = viewProj * glm::vec4(worldPos, 1.0f);
+        if (clipSpace.w <= 0.0f) return glm::vec2(-1000, -1000); // Behind camera
+
+        glm::vec3 ndc = glm::vec3(clipSpace) / clipSpace.w;
+
+        float screenX = (ndc.x + 1.0f) * 0.5f * windowWidth;
+        float screenY = (1.0f - ndc.y) * 0.5f * windowHeight;
+
+        return glm::vec2(screenX, screenY);
+    };
+
+    // Render axis labels
+    if (m_Axes && m_Axes->IsVisible()) {
+        float length = m_Axes->GetLength();
+
+        // X axis label (red)
+        glm::vec2 xPos = worldToScreen(glm::vec3(length + 0.5f, 0, 0));
+        if (xPos.x >= 0 && xPos.x < windowWidth && xPos.y >= 0 && xPos.y < windowHeight) {
+            drawList->AddText(ImVec2(xPos.x, xPos.y), IM_COL32(255, 0, 0, 255), "X");
+        }
+
+        // Y axis label (green)
+        glm::vec2 yPos = worldToScreen(glm::vec3(0, length + 0.5f, 0));
+        if (yPos.x >= 0 && yPos.x < windowWidth && yPos.y >= 0 && yPos.y < windowHeight) {
+            drawList->AddText(ImVec2(yPos.x, yPos.y), IM_COL32(0, 255, 0, 255), "Y");
+        }
+
+        // Z axis label (blue)
+        glm::vec2 zPos = worldToScreen(glm::vec3(0, 0, length + 0.5f));
+        if (zPos.x >= 0 && zPos.x < windowWidth && zPos.y >= 0 && zPos.y < windowHeight) {
+            drawList->AddText(ImVec2(zPos.x, zPos.y), IM_COL32(0, 0, 255, 255), "Z");
+        }
+    }
+
+    // Render grid labels
+    if (m_Grid && m_Grid->IsVisible()) {
+        const auto& labels = m_Grid->GetLabels();
+        for (const auto& label : labels) {
+            glm::vec2 screenPos = worldToScreen(label.position);
+            if (screenPos.x >= 0 && screenPos.x < windowWidth &&
+                screenPos.y >= 0 && screenPos.y < windowHeight) {
+                drawList->AddText(ImVec2(screenPos.x, screenPos.y),
+                                IM_COL32(100, 100, 100, 200),
+                                label.text.c_str());
+            }
+        }
+    }
 }
 

@@ -65,20 +65,8 @@ void FileBrowser::RefreshDirectory() {
             return a.name < b.name;
         });
 
-        // Auto-select and check default file if it exists
-        if (!m_DefaultFile.empty() && m_FirstRender) {
-            for (size_t i = 0; i < m_Files.size(); i++) {
-                if (m_Files[i].name == m_DefaultFile && !m_Files[i].isDirectory) {
-                    m_SelectedIndex = static_cast<int>(i);
-                    m_SelectedFile = m_Files[i].path;
-                    m_Files[i].isChecked = true;
-                    m_HasNewCheck = true;
-                    m_NewCheckedFile = m_Files[i].path;
-                    m_FirstRender = false;
-                    break;
-                }
-            }
-        }
+        // Don't auto-select any file on startup
+        m_FirstRender = false;
 
     } catch (const std::exception& e) {
     }

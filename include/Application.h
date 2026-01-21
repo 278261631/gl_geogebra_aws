@@ -33,6 +33,7 @@ public:
 
     void LoadImageAndGeneratePoints(const std::string& filepath);
     void RemoveImagePoints(const std::string& filepath);
+    void Render3DLabels();
 
 private:
     void Update(float deltaTime);
