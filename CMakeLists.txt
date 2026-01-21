@@ -56,6 +56,7 @@ set(SOURCES
     src/Axes.cpp
     src/GeometryObject.cpp
     src/InputHandler.cpp
+    src/ImageLoader.cpp
     src/UI/UIManager.cpp
     src/UI/Toolbar.cpp
     src/UI/Sidebar.cpp
@@ -80,6 +81,7 @@ set(HEADERS
     include/Axes.h
     include/GeometryObject.h
     include/InputHandler.h
+    include/ImageLoader.h
     include/UI/UIManager.h
     include/UI/Toolbar.h
     include/UI/Sidebar.h
@@ -102,6 +104,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/external/glfw/include
     ${CMAKE_CURRENT_SOURCE_DIR}/external/glad/include
     ${CMAKE_CURRENT_SOURCE_DIR}/external/glm
+    ${CMAKE_CURRENT_SOURCE_DIR}/external/stb
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
