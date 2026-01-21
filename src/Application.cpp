@@ -193,9 +193,10 @@ void Application::LoadImageAndGeneratePoints(const std::string& filepath) {
     }
 
     // Generate point cloud from image
-    float scaleX = 0.1f;  // Scale down pixel coordinates
-    float scaleY = 0.1f;
-    float scaleZ = 10.0f; // Scale up Z values for visibility
+    // Now: pixel(x,y) -> 3D(x,z), pixel value -> y height
+    float scaleX = 0.1f;  // Scale for X (pixel X -> world X)
+    float scaleY = 10.0f; // Scale for Y (pixel value -> world Y height)
+    float scaleZ = 0.1f;  // Scale for Z (pixel Y -> world Z)
 
     auto points = m_ImageLoader->GeneratePointCloud(scaleX, scaleY, scaleZ);
 
@@ -208,15 +209,15 @@ void Application::LoadImageAndGeneratePoints(const std::string& filepath) {
     for (const auto& pos : points) {
         auto point = std::make_shared<Point>(pos);
 
-        // Color based on Z value (height)
-        float normalizedZ = pos.z / scaleZ;  // 0 to 1
+        // Color based on Y value (height)
+        float normalizedY = pos.y / scaleY;  // 0 to 1
         glm::vec4 color;
 
         // Color gradient: blue (low) -> green -> red (high)
-        if (normalizedZ < 0.5f) {
-            color = glm::vec4(0.0f, normalizedZ * 2.0f, 1.0f - normalizedZ * 2.0f, 1.0f);
+        if (normalizedY < 0.5f) {
+            color = glm::vec4(0.0f, normalizedY * 2.0f, 1.0f - normalizedY * 2.0f, 1.0f);
         } else {
-            color = glm::vec4((normalizedZ - 0.5f) * 2.0f, 1.0f - (normalizedZ - 0.5f) * 2.0f, 0.0f, 1.0f);
+            color = glm::vec4((normalizedY - 0.5f) * 2.0f, 1.0f - (normalizedY - 0.5f) * 2.0f, 0.0f, 1.0f);
         }
 
         point->SetColor(color);

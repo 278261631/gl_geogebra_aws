@@ -80,17 +80,17 @@ std::vector<glm::vec3> ImageLoader::GeneratePointCloud(float scaleX, float scale
 
     // Center the point cloud
     float centerX = m_Width * 0.5f;
-    float centerY = m_Height * 0.5f;
+    float centerZ = m_Height * 0.5f;
 
     for (int y = 0; y < m_Height; y++) {
         for (int x = 0; x < m_Width; x++) {
             float pixelValue = GetNormalizedPixelValue(x, y);
 
-            // Create point: x, y = pixel coordinates (centered), z = pixel value
+            // Create point: pixel(x,y) -> 3D(x,z), pixel value -> y height
             glm::vec3 point;
-            point.x = (x - centerX) * scaleX;
-            point.y = (y - centerY) * scaleY;
-            point.z = pixelValue * scaleZ;
+            point.x = (x - centerX) * scaleX;           // Pixel X -> World X
+            point.y = pixelValue * scaleY;              // Pixel value -> World Y (height)
+            point.z = (y - centerZ) * scaleZ;           // Pixel Y -> World Z
 
             points.push_back(point);
         }
