@@ -1,0 +1,49 @@
+#pragma once
+
+#include <memory>
+#include "Window.h"
+#include "Renderer.h"
+#include "Camera.h"
+#include "InputHandler.h"
+#include "UI/UIManager.h"
+#include "Grid.h"
+#include "Axes.h"
+#include <vector>
+
+class GeometryObject;
+
+class Application {
+public:
+    Application();
+    ~Application();
+
+    bool Initialize();
+    void Run();
+    void Shutdown();
+
+    Window* GetWindow() { return m_Window.get(); }
+    Camera* GetCamera() { return m_Camera.get(); }
+    Renderer* GetRenderer() { return m_Renderer.get(); }
+
+    void AddGeometryObject(std::shared_ptr<GeometryObject> object);
+    void RemoveGeometryObject(std::shared_ptr<GeometryObject> object);
+    std::vector<std::shared_ptr<GeometryObject>>& GetGeometryObjects() { return m_GeometryObjects; }
+
+private:
+    void Update(float deltaTime);
+    void Render();
+
+    std::unique_ptr<Window> m_Window;
+    std::unique_ptr<Renderer> m_Renderer;
+    std::unique_ptr<Camera> m_Camera;
+    std::unique_ptr<InputHandler> m_InputHandler;
+    std::unique_ptr<UIManager> m_UIManager;
+    std::unique_ptr<Grid> m_Grid;
+    std::unique_ptr<Axes> m_Axes;
+
+    std::vector<std::shared_ptr<GeometryObject>> m_GeometryObjects;
+
+    bool m_Running;
+    float m_LastFrameTime;
+};
+

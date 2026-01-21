@@ -1,0 +1,38 @@
+# Build directories
+build/
+bin/
+lib/
+
+# IDE files
+.vs/
+.vscode/
+*.suo
+*.user
+*.sln
+*.vcxproj
+*.vcxproj.filters
+
+# Compiled files
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# External dependencies (downloaded separately)
+external/glfw/
+external/glad/
+external/glm/
+external/imgui/
+
+# OS files
+.DS_Store
+Thumbs.db
+
