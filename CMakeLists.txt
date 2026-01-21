@@ -60,6 +60,7 @@ set(SOURCES
     src/UI/Toolbar.cpp
     src/UI/Sidebar.cpp
     src/UI/PropertiesPanel.cpp
+    src/UI/FileBrowser.cpp
     src/Math/Vector3.cpp
     src/Math/Matrix4.cpp
     src/Geometry/Point.cpp
@@ -83,6 +84,7 @@ set(HEADERS
     include/UI/Toolbar.h
     include/UI/Sidebar.h
     include/UI/PropertiesPanel.h
+    include/UI/FileBrowser.h
     include/Math/Vector3.h
     include/Math/Matrix4.h
     include/Geometry/Point.h
@@ -113,7 +115,16 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 # Copy shaders to build directory (currently shaders are embedded in code)
 # file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/shaders DESTINATION ${CMAKE_BINARY_DIR})
 
+# Copy test-img folder to build directory
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test-img)
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/test-img DESTINATION ${CMAKE_BINARY_DIR}/bin/Release)
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/test-img DESTINATION ${CMAKE_BINARY_DIR}/bin/Debug)
+endif()
+
 # Install
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)
 # install(DIRECTORY shaders DESTINATION bin)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test-img)
+    install(DIRECTORY test-img DESTINATION bin)
+endif()
 

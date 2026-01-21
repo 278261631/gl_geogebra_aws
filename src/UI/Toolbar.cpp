@@ -1,5 +1,6 @@
 #include "UI/Toolbar.h"
 #include "UI/UIManager.h"
+#include "UI/FileBrowser.h"
 #include "Application.h"
 #include "Geometry/Point.h"
 #include "Geometry/Line.h"
@@ -85,6 +86,13 @@ void Toolbar::Render() {
 
     if (ImGui::Button("Scale", ImVec2(180, 30))) {
         m_CurrentTool = Tool::Scale;
+    }
+
+    ImGui::Separator();
+    ImGui::Text("File");
+
+    if (ImGui::Button("Browse Files", ImVec2(180, 30))) {
+        m_UIManager->GetFileBrowser()->Open();
     }
 
     ImGui::End();

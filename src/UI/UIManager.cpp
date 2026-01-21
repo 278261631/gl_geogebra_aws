@@ -2,6 +2,7 @@
 #include "UI/Toolbar.h"
 #include "UI/Sidebar.h"
 #include "UI/PropertiesPanel.h"
+#include "UI/FileBrowser.h"
 #include "Application.h"
 #include "Window.h"
 #include <imgui.h>
@@ -42,12 +43,14 @@ bool UIManager::Initialize() {
     m_Toolbar = std::make_unique<Toolbar>(this);
     m_Sidebar = std::make_unique<Sidebar>(this);
     m_PropertiesPanel = std::make_unique<PropertiesPanel>(this);
+    m_FileBrowser = std::make_unique<FileBrowser>();
 
     std::cout << "UI Manager initialized" << std::endl;
     return true;
 }
 
 void UIManager::Shutdown() {
+    m_FileBrowser.reset();
     m_PropertiesPanel.reset();
     m_Sidebar.reset();
     m_Toolbar.reset();
@@ -72,6 +75,7 @@ void UIManager::Render() {
     m_Toolbar->Render();
     m_Sidebar->Render();
     m_PropertiesPanel->Render();
+    m_FileBrowser->Render();
 
     if (m_ShowDemoWindow) {
         ImGui::ShowDemoWindow(&m_ShowDemoWindow);
