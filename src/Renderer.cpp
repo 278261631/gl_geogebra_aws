@@ -49,6 +49,7 @@ void Renderer::Shutdown() {
 
     m_DefaultShader.reset();
     m_LineShader.reset();
+    m_PointCloudShader.reset();
 }
 
 void Renderer::SetupShaders() {
@@ -142,6 +143,37 @@ void Renderer::SetupShaders() {
 
     m_LineShader->LoadFromSource(lineVertexShader, lineFragmentShader);
 
+    // Point cloud shader (optimized for point rendering)
+    m_PointCloudShader = std::make_unique<Shader>();
+    std::string pointCloudVertexShader = R"(
+        #version 330 core
+        layout (location = 0) in vec3 aPos;
+        layout (location = 1) in vec4 aColor;
+
+        uniform mat4 model;
+        uniform mat4 view;
+        uniform mat4 projection;
+
+        out vec4 vColor;
+
+        void main() {
+            gl_Position = projection * view * model * vec4(aPos, 1.0);
+            vColor = aColor;
+        }
+    )";
+
+    std::string pointCloudFragmentShader = R"(
+        #version 330 core
+        in vec4 vColor;
+        out vec4 FragColor;
+
+        void main() {
+            FragColor = vColor;
+        }
+    )";
+
+    m_PointCloudShader->LoadFromSource(pointCloudVertexShader, pointCloudFragmentShader);
+
     // Grid shader uses the same shader as line shader
     // We'll use m_LineShader directly for grid rendering
 }
@@ -173,6 +205,17 @@ void Renderer::RenderGeometry(GeometryObject* object, Camera* camera) {
     m_DefaultShader->SetVec3("viewPos", camera->GetPosition());
 
     object->Render(m_DefaultShader.get());
+}
+
+void Renderer::RenderPointCloud(GeometryObject* object, Camera* camera) {
+    if (!object || !object->IsVisible()) return;
+
+    m_PointCloudShader->Use();
+    m_PointCloudShader->SetMat4("model", object->GetModelMatrix());
+    m_PointCloudShader->SetMat4("view", camera->GetViewMatrix());
+    m_PointCloudShader->SetMat4("projection", camera->GetProjectionMatrix());
+
+    object->Render(m_PointCloudShader.get());
 }
 
 void Renderer::RenderLine(const glm::vec3& start, const glm::vec3& end, const glm::vec4& color, Camera* camera) {

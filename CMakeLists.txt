@@ -65,6 +65,7 @@ set(SOURCES
     src/Math/Vector3.cpp
     src/Math/Matrix4.cpp
     src/Geometry/Point.cpp
+    src/Geometry/PointCloud.cpp
     src/Geometry/Line.cpp
     src/Geometry/Plane.cpp
     src/Geometry/Sphere.cpp
@@ -90,6 +91,7 @@ set(HEADERS
     include/Math/Vector3.h
     include/Math/Matrix4.h
     include/Geometry/Point.h
+    include/Geometry/PointCloud.h
     include/Geometry/Line.h
     include/Geometry/Plane.h
     include/Geometry/Sphere.h

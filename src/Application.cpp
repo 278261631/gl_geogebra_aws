@@ -3,6 +3,7 @@
 #include "Geometry/Sphere.h"
 #include "Geometry/Cube.h"
 #include "Geometry/Point.h"
+#include "Geometry/PointCloud.h"
 #include "UI/FileBrowser.h"
 #include <iostream>
 #include <GLFW/glfw3.h>
@@ -153,7 +154,13 @@ void Application::Render() {
     // Render geometry objects
     for (auto& object : m_GeometryObjects) {
         if (object->IsVisible()) {
-            m_Renderer->RenderGeometry(object.get(), m_Camera.get());
+            // Use optimized point cloud renderer for PointCloud objects
+            if (object->GetType() == GeometryType::Point &&
+                dynamic_cast<PointCloud*>(object.get()) != nullptr) {
+                m_Renderer->RenderPointCloud(object.get(), m_Camera.get());
+            } else {
+                m_Renderer->RenderGeometry(object.get(), m_Camera.get());
+            }
         }
     }
 
@@ -200,15 +207,13 @@ void Application::LoadImageAndGeneratePoints(const std::string& filepath) {
 
     auto points = m_ImageLoader->GeneratePointCloud(scaleX, scaleY, scaleZ);
 
-    std::cout << "Creating " << points.size() << " point objects..." << std::endl;
+    std::cout << "Creating point cloud with " << points.size() << " points..." << std::endl;
 
-    // Create point objects and store them
-    std::vector<std::shared_ptr<GeometryObject>> imagePoints;
-    int pointCount = 0;
+    // Prepare colors based on Y value (height)
+    std::vector<glm::vec4> colors;
+    colors.reserve(points.size());
 
     for (const auto& pos : points) {
-        auto point = std::make_shared<Point>(pos);
-
         // Color based on Y value (height)
         float normalizedY = pos.y / scaleY;  // 0 to 1
         glm::vec4 color;
@@ -220,18 +225,24 @@ void Application::LoadImageAndGeneratePoints(const std::string& filepath) {
             color = glm::vec4((normalizedY - 0.5f) * 2.0f, 1.0f - (normalizedY - 0.5f) * 2.0f, 0.0f, 1.0f);
         }
 
-        point->SetColor(color);
-        point->SetName("ImagePoint_" + std::to_string(pointCount++));
-        point->Initialize();
-
-        AddGeometryObject(point);
-        imagePoints.push_back(point);
+        colors.push_back(color);
     }
 
-    // Store the points associated with this image
-    m_ImagePointsMap[filepath] = imagePoints;
+    // Create a single PointCloud object for all points
+    auto pointCloud = std::make_shared<PointCloud>();
+    pointCloud->SetPointData(points, colors);
+    pointCloud->SetPointSize(3.0f);
+    pointCloud->SetName("PointCloud_" + filepath);
+    pointCloud->Initialize();
 
-    std::cout << "Point cloud created with " << pointCount << " points" << std::endl;
+    AddGeometryObject(pointCloud);
+
+    // Store the point cloud associated with this image
+    std::vector<std::shared_ptr<GeometryObject>> imageObjects;
+    imageObjects.push_back(pointCloud);
+    m_ImagePointsMap[filepath] = imageObjects;
+
+    std::cout << "Point cloud created with " << points.size() << " points (1 draw call)" << std::endl;
 }
 
 void Application::RemoveImagePoints(const std::string& filepath) {
