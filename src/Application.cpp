@@ -5,11 +5,14 @@
 #include "Geometry/Point.h"
 #include "Geometry/PointCloud.h"
 #include "UI/FileBrowser.h"
+#include "UI/LabelDataBrowser.h"
 #include <iostream>
 #include <cmath>
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <glm/gtc/matrix_transform.hpp>
+
+#include <filesystem>
 
 Application::Application()
     : m_Running(false)
@@ -130,6 +133,34 @@ void Application::Update(float deltaTime) {
 
             std::cout << "Removing image points: " << uncheckedFile << std::endl;
             RemoveImagePoints(uncheckedFile);
+        }
+    }
+
+    // Check for new FITS pair selection from label txt
+    LabelDataBrowser* labelBrowser = m_UIManager->GetLabelDataBrowser();
+    if (labelBrowser && labelBrowser->HasNewFitsPair()) {
+        const std::string alignedFits = labelBrowser->GetNewAlignedFitsPath();
+        const std::string templateFits = labelBrowser->GetNewTemplateFitsPath();
+        const std::string sourceTxt = labelBrowser->GetNewFitsSourceTxtPath();
+        labelBrowser->ClearNewFitsPairFlag();
+
+        namespace fs = std::filesystem;
+
+        std::cout << "TXT selected: " << sourceTxt << std::endl;
+        std::cout << "Loading FITS pair:" << std::endl;
+        std::cout << "  aligned:  " << alignedFits << std::endl;
+        std::cout << "  template: " << templateFits << std::endl;
+
+        if (!alignedFits.empty() && fs::exists(fs::path(alignedFits))) {
+            LoadImageAndGeneratePoints(alignedFits);
+        } else {
+            std::cerr << "Aligned FITS not found: " << alignedFits << std::endl;
+        }
+
+        if (!templateFits.empty() && fs::exists(fs::path(templateFits))) {
+            LoadImageAndGeneratePoints(templateFits);
+        } else {
+            std::cerr << "Template FITS not found: " << templateFits << std::endl;
         }
     }
 

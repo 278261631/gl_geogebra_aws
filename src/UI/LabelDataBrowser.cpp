@@ -40,7 +40,12 @@ LabelDataBrowser::LabelDataBrowser()
     , m_SelectedPath("")
     , m_PreviewText("")
     , m_SelectedSize(0)
-    , m_SelectedIsFile(false) {
+    , m_SelectedIsFile(false)
+    , m_HasNewFitsPair(false)
+    , m_NewAlignedFitsPath("")
+    , m_NewTemplateFitsPath("")
+    , m_NewFitsSourceTxtPath("")
+    , m_LastParseMessage("") {
     ResolveRootPath();
 }
 
@@ -63,6 +68,124 @@ void LabelDataBrowser::ResolveRootPath() {
     } catch (...) {
         m_ResolvedRootPath = m_RootPath;
     }
+}
+
+static bool ParseFirstFitsPairFromTxt(
+    const fs::path& txtPath,
+    std::string& outFileDir,
+    std::string& outAlignedFilename,
+    std::string& outTemplateAlignedFilename,
+    std::string& outError) {
+    outFileDir.clear();
+    outAlignedFilename.clear();
+    outTemplateAlignedFilename.clear();
+    outError.clear();
+
+    std::ifstream in(txtPath, std::ios::in);
+    if (!in.is_open()) {
+        outError = "无法打开 txt";
+        return false;
+    }
+
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty()) continue;
+        if (!line.empty() && line[0] == '#') continue;
+
+        // Expected (whitespace-separated):
+        // index file_dir aligned_filename template_aligned_filename ...
+        std::istringstream iss(line);
+        std::string index;
+        if (!(iss >> index >> outFileDir >> outAlignedFilename >> outTemplateAlignedFilename)) {
+            // Not enough tokens, keep scanning
+            continue;
+        }
+        return true;
+    }
+
+    outError = "txt 中未找到数据行";
+    return false;
+}
+
+static bool TryFindFileByNameUnder(const fs::path& root, const std::string& filename, fs::path& outPath) {
+    try {
+        if (!fs::exists(root) || !fs::is_directory(root)) return false;
+        for (const auto& entry : fs::recursive_directory_iterator(root, fs::directory_options::skip_permission_denied)) {
+            if (!entry.is_regular_file()) continue;
+            if (entry.path().filename().string() == filename) {
+                outPath = entry.path();
+                return true;
+            }
+        }
+    } catch (...) {
+        return false;
+    }
+    return false;
+}
+
+static fs::path ResolveMaybeMissingPath(const fs::path& candidate, const std::vector<fs::path>& searchRoots) {
+    if (!candidate.empty() && fs::exists(candidate)) return candidate;
+
+    const std::string filename = candidate.filename().string();
+    if (filename.empty()) return candidate;
+
+    for (const auto& root : searchRoots) {
+        fs::path found;
+        if (TryFindFileByNameUnder(root, filename, found)) return found;
+    }
+
+    return candidate; // fallback (may not exist)
+}
+
+void LabelDataBrowser::TryParseFitsPairFromTxtSelection(const fs::path& txtPath) {
+    m_HasNewFitsPair = false;
+    m_NewAlignedFitsPath.clear();
+    m_NewTemplateFitsPath.clear();
+    m_NewFitsSourceTxtPath.clear();
+    m_LastParseMessage.clear();
+
+    std::string fileDir, alignedName, templateName, err;
+    if (!ParseFirstFitsPairFromTxt(txtPath, fileDir, alignedName, templateName, err)) {
+        m_LastParseMessage = "解析失败: " + err;
+        return;
+    }
+
+    fs::path alignedCandidate;
+    fs::path templateCandidate;
+
+    try {
+        fs::path fileDirPath(fileDir);
+        fs::path alignedPath(alignedName);
+        fs::path templatePath(templateName);
+
+        alignedCandidate = alignedPath.is_absolute() ? alignedPath : (fileDirPath / alignedPath);
+        templateCandidate = templatePath.is_absolute() ? templatePath : (fileDirPath / templatePath);
+    } catch (...) {
+        m_LastParseMessage = "解析成功，但路径拼接失败";
+        return;
+    }
+
+    // Try to resolve within common local roots (useful if txt contains remote drive paths like E:\...)
+    const fs::path cwd = fs::current_path();
+    std::vector<fs::path> roots = {
+        cwd,
+        cwd / "test-img",
+        cwd / "test-label-data",
+        cwd / ".." / ".." / ".." // if running from build/bin/<Config>
+    };
+
+    alignedCandidate = ResolveMaybeMissingPath(alignedCandidate, roots);
+    templateCandidate = ResolveMaybeMissingPath(templateCandidate, roots);
+
+    m_NewAlignedFitsPath = alignedCandidate.string();
+    m_NewTemplateFitsPath = templateCandidate.string();
+    m_NewFitsSourceTxtPath = txtPath.string();
+
+    m_HasNewFitsPair = true;
+
+    std::ostringstream oss;
+    oss << "OK: aligned=" << alignedName << ", template=" << templateName;
+    m_LastParseMessage = oss.str();
 }
 
 void LabelDataBrowser::Render() {
@@ -120,6 +243,14 @@ void LabelDataBrowser::Render() {
         ImGui::Text("Path: %s", m_SelectedPath.c_str());
         if (m_SelectedIsFile) {
             ImGui::Text("Size: %llu bytes", static_cast<unsigned long long>(m_SelectedSize));
+            if (!m_LastParseMessage.empty()) {
+                ImGui::Separator();
+                ImGui::Text("Parse: %s", m_LastParseMessage.c_str());
+                if (!m_NewAlignedFitsPath.empty() || !m_NewTemplateFitsPath.empty()) {
+                    ImGui::Text("Aligned FITS: %s", m_NewAlignedFitsPath.c_str());
+                    ImGui::Text("Template FITS: %s", m_NewTemplateFitsPath.c_str());
+                }
+            }
             ImGui::Separator();
             ImGui::TextUnformatted("Preview");
             ImGui::Separator();
@@ -195,6 +326,13 @@ void LabelDataBrowser::RenderDirectoryTree(const fs::path& dir) {
                     m_SelectedSize = 0;
                 }
                 m_PreviewText = ReadTextFilePreview(p);
+
+                // If selecting a txt, parse a FITS pair for the application to load
+                if (p.extension().string() == ".txt") {
+                    TryParseFitsPairFromTxtSelection(p);
+                } else {
+                    m_LastParseMessage.clear();
+                }
             }
         }
 

@@ -17,9 +17,18 @@ public:
     void SetRootPath(const std::string& path);
     const std::string& GetRootPath() const { return m_RootPath; }
 
+    // Event: when a .txt is selected, we may parse a FITS pair to load.
+    bool HasNewFitsPair() const { return m_HasNewFitsPair; }
+    void ClearNewFitsPairFlag() { m_HasNewFitsPair = false; }
+    const std::string& GetNewAlignedFitsPath() const { return m_NewAlignedFitsPath; }
+    const std::string& GetNewTemplateFitsPath() const { return m_NewTemplateFitsPath; }
+    const std::string& GetNewFitsSourceTxtPath() const { return m_NewFitsSourceTxtPath; }
+    const std::string& GetLastParseMessage() const { return m_LastParseMessage; }
+
 private:
     void ResolveRootPath();
     void RenderDirectoryTree(const std::filesystem::path& dir);
+    void TryParseFitsPairFromTxtSelection(const std::filesystem::path& txtPath);
 
     bool m_IsOpen;
     std::string m_RootPath;          // configured root (usually relative)
@@ -28,5 +37,11 @@ private:
     std::string m_PreviewText;       // cached preview for selected file
     std::uintmax_t m_SelectedSize;
     bool m_SelectedIsFile;
+
+    bool m_HasNewFitsPair;
+    std::string m_NewAlignedFitsPath;
+    std::string m_NewTemplateFitsPath;
+    std::string m_NewFitsSourceTxtPath;
+    std::string m_LastParseMessage;
 };
 
