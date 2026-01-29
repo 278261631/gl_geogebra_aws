@@ -80,6 +80,7 @@ set(SOURCES
     src/UI/Sidebar.cpp
     src/UI/PropertiesPanel.cpp
     src/UI/FileBrowser.cpp
+    src/UI/LabelDataBrowser.cpp
     src/Math/Vector3.cpp
     src/Math/Matrix4.cpp
     src/Geometry/Point.cpp
@@ -107,6 +108,7 @@ set(HEADERS
     include/UI/Sidebar.h
     include/UI/PropertiesPanel.h
     include/UI/FileBrowser.h
+    include/UI/LabelDataBrowser.h
     include/Math/Vector3.h
     include/Math/Matrix4.h
     include/Geometry/Point.h
@@ -148,6 +150,12 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test-img)
     file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/test-img DESTINATION ${CMAKE_BINARY_DIR}/bin/Debug)
 endif()
 
+# Copy test-label-data folder to build directory (run.bat starts from build/bin/<Config>)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test-label-data)
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/test-label-data DESTINATION ${CMAKE_BINARY_DIR}/bin/Release)
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/test-label-data DESTINATION ${CMAKE_BINARY_DIR}/bin/Debug)
+endif()
+
 # Install
 install(TARGETS ${PROJECT_NAME} DESTINATION bin)
 # install(DIRECTORY shaders DESTINATION bin)
@@ -155,3 +163,6 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test-img)
     install(DIRECTORY test-img DESTINATION bin)
 endif()
 
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/test-label-data)
+    install(DIRECTORY test-label-data DESTINATION bin)
+endif()

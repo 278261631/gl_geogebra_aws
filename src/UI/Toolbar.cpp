@@ -1,6 +1,7 @@
 #include "UI/Toolbar.h"
 #include "UI/UIManager.h"
 #include "UI/FileBrowser.h"
+#include "UI/LabelDataBrowser.h"
 #include "Application.h"
 #include "Geometry/Point.h"
 #include "Geometry/Line.h"
@@ -93,6 +94,10 @@ void Toolbar::Render() {
 
     if (ImGui::Button("Browse Files", ImVec2(180, 30))) {
         m_UIManager->GetFileBrowser()->Open();
+    }
+
+    if (ImGui::Button("Browse Label Data", ImVec2(180, 30))) {
+        m_UIManager->GetLabelDataBrowser()->Open();
     }
 
     ImGui::End();
