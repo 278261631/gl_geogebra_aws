@@ -5,7 +5,6 @@
 #include <iostream>
 #include <algorithm>
 #include <cmath>
-#include <cmath>
 
 ImageLoader::ImageLoader()
     : m_Data(nullptr)
@@ -218,6 +217,78 @@ void ImageLoader::GeneratePointCloudWithColors(std::vector<glm::vec3>& positions
     std::cout << "Generated point cloud with " << positions.size() << " points (with original colors)" << std::endl;
 }
 
+namespace {
+inline void HighlightBounds(int center, int sizePixels, int& outMin, int& outMaxInclusive) {
+    if (sizePixels <= 0) {
+        outMin = 1;
+        outMaxInclusive = 0;
+        return;
+    }
+    const int half = sizePixels / 2;         // size 10 => half 5
+    outMin = center - half;
+    outMaxInclusive = outMin + sizePixels - 1; // center=100,size=10 => [95..104]
+}
+
+inline bool IsInRangeInclusive(int v, int minV, int maxV) {
+    return v >= minV && v <= maxV;
+}
+} // namespace
+
+void ImageLoader::GeneratePointCloudWithColorsHighlight(std::vector<glm::vec3>& positions,
+                                                        std::vector<glm::vec4>& colors,
+                                                        int highlightCenterX,
+                                                        int highlightCenterY,
+                                                        int highlightSizePixels,
+                                                        const glm::vec4& highlightColor,
+                                                        float scaleX,
+                                                        float scaleY,
+                                                        float scaleZ) const {
+    positions.clear();
+    colors.clear();
+
+    if (!IsLoaded()) {
+        return;
+    }
+
+    positions.reserve(m_Width * m_Height);
+    colors.reserve(m_Width * m_Height);
+
+    // Center the point cloud
+    const float centerX = m_Width * 0.5f;
+    const float centerZ = m_Height * 0.5f;
+
+    int hx0, hx1, hy0, hy1;
+    HighlightBounds(highlightCenterX, highlightSizePixels, hx0, hx1);
+    HighlightBounds(highlightCenterY, highlightSizePixels, hy0, hy1);
+
+    for (int y = 0; y < m_Height; y++) {
+        for (int x = 0; x < m_Width; x++) {
+            // Get grayscale value for height
+            const float pixelValue = GetNormalizedPixelValue(x, y);
+
+            // Base color
+            glm::vec3 rgb = GetPixelColor(x, y);
+            glm::vec4 outColor(rgb, 1.0f);
+
+            // Highlight override
+            if (IsInRangeInclusive(x, hx0, hx1) && IsInRangeInclusive(y, hy0, hy1)) {
+                outColor = highlightColor;
+            }
+
+            glm::vec3 point;
+            point.x = (x - centerX) * scaleX;
+            point.y = pixelValue * scaleY;
+            point.z = (y - centerZ) * scaleZ;
+
+            positions.push_back(point);
+            colors.push_back(outColor);
+        }
+    }
+
+    std::cout << "Generated point cloud with " << positions.size()
+              << " points (with highlight size=" << highlightSizePixels << ")" << std::endl;
+}
+
 void ImageLoader::GeneratePointCloudWithColorsROI(std::vector<glm::vec3>& positions,
                                                   std::vector<glm::vec4>& colors,
                                                   int pixelX,
@@ -280,4 +351,81 @@ void ImageLoader::GeneratePointCloudWithColorsROI(std::vector<glm::vec3>& positi
     std::cout << "Generated ROI point cloud with " << positions.size()
               << " points (pixel center=" << pixelX << "," << pixelY
               << " radius=" << radiusPixels << ")" << std::endl;
+}
+
+void ImageLoader::GeneratePointCloudWithColorsROIHighlight(std::vector<glm::vec3>& positions,
+                                                           std::vector<glm::vec4>& colors,
+                                                           int pixelX,
+                                                           int pixelY,
+                                                           int radiusPixels,
+                                                           int highlightCenterX,
+                                                           int highlightCenterY,
+                                                           int highlightSizePixels,
+                                                           const glm::vec4& highlightColor,
+                                                           float scaleX,
+                                                           float scaleY,
+                                                           float scaleZ) const {
+    positions.clear();
+    colors.clear();
+
+    if (!IsLoaded()) {
+        return;
+    }
+
+    if (m_Width <= 0 || m_Height <= 0) {
+        return;
+    }
+
+    if (radiusPixels < 0) radiusPixels = 0;
+
+    // Clamp ROI bounds to image
+    const int x0 = std::max(0, pixelX - radiusPixels);
+    const int x1 = std::min(m_Width - 1, pixelX + radiusPixels);
+    const int y0 = std::max(0, pixelY - radiusPixels);
+    const int y1 = std::min(m_Height - 1, pixelY + radiusPixels);
+
+    if (x0 > x1 || y0 > y1) {
+        return;
+    }
+
+    int hx0, hx1, hy0, hy1;
+    HighlightBounds(highlightCenterX, highlightSizePixels, hx0, hx1);
+    HighlightBounds(highlightCenterY, highlightSizePixels, hy0, hy1);
+
+    const std::size_t approxCount =
+        static_cast<std::size_t>(x1 - x0 + 1) * static_cast<std::size_t>(y1 - y0 + 1);
+    positions.reserve(approxCount);
+    colors.reserve(approxCount);
+
+    // Keep the same world-space centering as full image, so ROI aligns with the original image coordinates.
+    const float centerX = m_Width * 0.5f;
+    const float centerZ = m_Height * 0.5f;
+
+    for (int y = y0; y <= y1; y++) {
+        for (int x = x0; x <= x1; x++) {
+            // Get grayscale value for height
+            const float pixelValue = GetNormalizedPixelValue(x, y);
+
+            // Base color
+            const glm::vec3 rgb = GetPixelColor(x, y);
+            glm::vec4 outColor(rgb, 1.0f);
+
+            // Highlight override
+            if (IsInRangeInclusive(x, hx0, hx1) && IsInRangeInclusive(y, hy0, hy1)) {
+                outColor = highlightColor;
+            }
+
+            glm::vec3 point;
+            point.x = (x - centerX) * scaleX;
+            point.y = pixelValue * scaleY;
+            point.z = (y - centerZ) * scaleZ;
+
+            positions.push_back(point);
+            colors.push_back(outColor);
+        }
+    }
+
+    std::cout << "Generated ROI point cloud with " << positions.size()
+              << " points (pixel center=" << pixelX << "," << pixelY
+              << " radius=" << radiusPixels << ", highlight size=" << highlightSizePixels << ")" << std::endl;
 }

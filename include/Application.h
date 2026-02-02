@@ -44,7 +44,12 @@ private:
                                             bool useRoi,
                                             int roiPixelX,
                                             int roiPixelY,
-                                            int roiRadiusPixels);
+                                            int roiRadiusPixels,
+                                            bool useHighlight,
+                                            int highlightCenterX,
+                                            int highlightCenterY,
+                                            int highlightSizePixels,
+                                            const glm::vec4& highlightColor);
 
     std::unique_ptr<Window> m_Window;
     std::unique_ptr<Renderer> m_Renderer;

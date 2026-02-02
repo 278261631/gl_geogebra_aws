@@ -200,13 +200,23 @@ void Application::Update(float deltaTime) {
         if (roiR > 500) roiR = 500;
 
         if (!alignedFits.empty() && fs::exists(fs::path(alignedFits))) {
-            LoadImageAndGeneratePointsInternal(alignedFits, /*replaceExisting*/ true, useRoi, roiX, roiY, roiR);
+            // Highlight 10x10 around ROI center:
+            // aligned -> orange-red, template -> sky-blue
+            const bool doHighlight = labelBrowser->HasPixelCenter();
+            const int highlightSize = 10;
+            const glm::vec4 alignedHighlight(1.0f, 0.2706f, 0.0f, 1.0f);   // OrangeRed (#FF4500)
+            LoadImageAndGeneratePointsInternal(alignedFits, /*replaceExisting*/ true, useRoi, roiX, roiY, roiR,
+                                               doHighlight, roiX, roiY, highlightSize, alignedHighlight);
         } else {
             std::cerr << "Aligned FITS not found: " << alignedFits << std::endl;
         }
 
         if (!templateFits.empty() && fs::exists(fs::path(templateFits))) {
-            LoadImageAndGeneratePointsInternal(templateFits, /*replaceExisting*/ true, useRoi, roiX, roiY, roiR);
+            const bool doHighlight = labelBrowser->HasPixelCenter();
+            const int highlightSize = 10;
+            const glm::vec4 templateHighlight(0.5294f, 0.8078f, 0.9216f, 1.0f); // SkyBlue (#87CEEB)
+            LoadImageAndGeneratePointsInternal(templateFits, /*replaceExisting*/ true, useRoi, roiX, roiY, roiR,
+                                               doHighlight, roiX, roiY, highlightSize, templateHighlight);
         } else {
             std::cerr << "Template FITS not found: " << templateFits << std::endl;
         }
@@ -269,7 +279,8 @@ void Application::RemoveGeometryObject(std::shared_ptr<GeometryObject> object) {
 
 void Application::LoadImageAndGeneratePoints(const std::string& filepath) {
     // Normal image loading: keep previous behavior (skip if already loaded).
-    LoadImageAndGeneratePointsInternal(filepath, /*replaceExisting*/ false, /*useRoi*/ false, 0, 0, 0);
+    LoadImageAndGeneratePointsInternal(filepath, /*replaceExisting*/ false, /*useRoi*/ false, 0, 0, 0,
+                                       /*useHighlight*/ false, 0, 0, 0, glm::vec4(0.0f));
 }
 
 void Application::LoadImageAndGeneratePointsInternal(const std::string& filepath,
@@ -277,7 +288,12 @@ void Application::LoadImageAndGeneratePointsInternal(const std::string& filepath
                                                      bool useRoi,
                                                      int roiPixelX,
                                                      int roiPixelY,
-                                                     int roiRadiusPixels) {
+                                                     int roiRadiusPixels,
+                                                     bool useHighlight,
+                                                     int highlightCenterX,
+                                                     int highlightCenterY,
+                                                     int highlightSizePixels,
+                                                     const glm::vec4& highlightColor) {
     if (!replaceExisting) {
         // Check if already loaded
         if (m_ImagePointsMap.find(filepath) != m_ImagePointsMap.end()) {
@@ -306,9 +322,24 @@ void Application::LoadImageAndGeneratePointsInternal(const std::string& filepath
     std::vector<glm::vec4> colors;
 
     if (useRoi) {
-        m_ImageLoader->GeneratePointCloudWithColorsROI(positions, colors, roiPixelX, roiPixelY, roiRadiusPixels, scaleX, scaleY, scaleZ);
+        if (useHighlight) {
+            m_ImageLoader->GeneratePointCloudWithColorsROIHighlight(
+                positions, colors,
+                roiPixelX, roiPixelY, roiRadiusPixels,
+                highlightCenterX, highlightCenterY, highlightSizePixels, highlightColor,
+                scaleX, scaleY, scaleZ);
+        } else {
+            m_ImageLoader->GeneratePointCloudWithColorsROI(positions, colors, roiPixelX, roiPixelY, roiRadiusPixels, scaleX, scaleY, scaleZ);
+        }
     } else {
-        m_ImageLoader->GeneratePointCloudWithColors(positions, colors, scaleX, scaleY, scaleZ);
+        if (useHighlight) {
+            m_ImageLoader->GeneratePointCloudWithColorsHighlight(
+                positions, colors,
+                highlightCenterX, highlightCenterY, highlightSizePixels, highlightColor,
+                scaleX, scaleY, scaleZ);
+        } else {
+            m_ImageLoader->GeneratePointCloudWithColors(positions, colors, scaleX, scaleY, scaleZ);
+        }
     }
 
     std::cout << "Creating point cloud with " << positions.size() << " points..." << std::endl;
