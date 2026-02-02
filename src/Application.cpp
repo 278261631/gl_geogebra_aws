@@ -203,7 +203,9 @@ void Application::Update(float deltaTime) {
             // Highlight 10x10 around ROI center:
             // aligned -> orange-red, template -> sky-blue
             const bool doHighlight = labelBrowser->HasPixelCenter();
-            const int highlightSize = 10;
+            int highlightSize = labelBrowser->GetHighlightSizePixels();
+            if (highlightSize < 1) highlightSize = 1;
+            if (highlightSize > 300) highlightSize = 300;
             const glm::vec4 alignedHighlight(1.0f, 0.2706f, 0.0f, 1.0f);   // OrangeRed (#FF4500)
             LoadImageAndGeneratePointsInternal(alignedFits, /*replaceExisting*/ true, useRoi, roiX, roiY, roiR,
                                                doHighlight, roiX, roiY, highlightSize, alignedHighlight);
@@ -213,7 +215,9 @@ void Application::Update(float deltaTime) {
 
         if (!templateFits.empty() && fs::exists(fs::path(templateFits))) {
             const bool doHighlight = labelBrowser->HasPixelCenter();
-            const int highlightSize = 10;
+            int highlightSize = labelBrowser->GetHighlightSizePixels();
+            if (highlightSize < 1) highlightSize = 1;
+            if (highlightSize > 300) highlightSize = 300;
             const glm::vec4 templateHighlight(0.5294f, 0.8078f, 0.9216f, 1.0f); // SkyBlue (#87CEEB)
             LoadImageAndGeneratePointsInternal(templateFits, /*replaceExisting*/ true, useRoi, roiX, roiY, roiR,
                                                doHighlight, roiX, roiY, highlightSize, templateHighlight);

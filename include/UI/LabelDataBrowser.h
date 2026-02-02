@@ -36,6 +36,9 @@ public:
     bool IsRoiEnabled() const { return m_RoiEnabled; }
     int GetRoiRadius() const { return m_RoiRadius; }
 
+    // Highlight controls (recolor a square region around pixel center)
+    int GetHighlightSizePixels() const { return m_HighlightSizePixels; }
+
     // Event: center camera view/rotation on ROI center (pixel_x, pixel_y)
     bool HasCenterCameraOnRoiRequest() const { return m_RequestCenterCameraOnRoi; }
     void ClearCenterCameraOnRoiRequest() { m_RequestCenterCameraOnRoi = false; }
@@ -74,6 +77,7 @@ private:
 
     bool m_RoiEnabled;
     int m_RoiRadius;
+    int m_HighlightSizePixels;
     bool m_RequestCenterCameraOnRoi;
 
     // Cache directory listings so the UI doesn't re-scan the filesystem every frame.

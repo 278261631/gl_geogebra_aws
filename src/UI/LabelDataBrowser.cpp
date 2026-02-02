@@ -52,6 +52,7 @@ LabelDataBrowser::LabelDataBrowser()
     , m_PixelY(0)
     , m_RoiEnabled(true)
     , m_RoiRadius(200)
+    , m_HighlightSizePixels(10)
     , m_RequestCenterCameraOnRoi(false) {
     ResolveRootPath();
 }
@@ -261,6 +262,8 @@ void LabelDataBrowser::TryParseFitsPairFromTxtSelection(const fs::path& txtPath)
     // Clamp ROI radius to requested range; keep enabled by default when we have pixel center.
     if (m_RoiRadius < 50) m_RoiRadius = 50;
     if (m_RoiRadius > 500) m_RoiRadius = 500;
+    if (m_HighlightSizePixels < 1) m_HighlightSizePixels = 1;
+    if (m_HighlightSizePixels > 300) m_HighlightSizePixels = 300;
     if (!m_HasPixelCenter) {
         // If we don't have pixel center, ROI cannot be applied.
         m_RoiEnabled = false;
@@ -347,6 +350,7 @@ void LabelDataBrowser::Render() {
                 ImGui::Text("Pixel Center: (%d, %d)", m_PixelX, m_PixelY);
                 ImGui::Checkbox("Only show neighborhood points (ROI)", &m_RoiEnabled);
                 ImGui::SliderInt("ROI radius (pixels)", &m_RoiRadius, 50, 500);
+                ImGui::SliderInt("Highlight size (pixels)", &m_HighlightSizePixels, 1, 300);
                 if (ImGui::Button("Reload FITS with ROI")) {
                     // Trigger the event again with current ROI settings
                     if (!m_NewAlignedFitsPath.empty() || !m_NewTemplateFitsPath.empty()) {
