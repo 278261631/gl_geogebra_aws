@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
 #include <glm/glm.hpp>
 
 class Shader {
@@ -31,5 +32,7 @@ private:
     int GetUniformLocation(const std::string& name) const;
 
     unsigned int m_ProgramID;
+    // Uniform location lookups are expensive; cache them after first query.
+    mutable std::unordered_map<std::string, int> m_UniformLocationCache;
 };
 

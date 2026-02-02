@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -54,6 +55,7 @@ LabelDataBrowser::~LabelDataBrowser() = default;
 void LabelDataBrowser::SetRootPath(const std::string& path) {
     m_RootPath = path;
     ResolveRootPath();
+    m_DirectoryCache.clear();
 }
 
 void LabelDataBrowser::ResolveRootPath() {
@@ -68,6 +70,46 @@ void LabelDataBrowser::ResolveRootPath() {
     } catch (...) {
         m_ResolvedRootPath = m_RootPath;
     }
+    // Root resolution may change the absolute path; clear cached directory entries.
+    m_DirectoryCache.clear();
+}
+
+const std::vector<LabelDataBrowser::CachedEntry>& LabelDataBrowser::GetDirectoryEntriesCached(const fs::path& dir) {
+    const std::string key = dir.string();
+    auto it = m_DirectoryCache.find(key);
+    if (it != m_DirectoryCache.end()) {
+        return it->second;
+    }
+
+    std::vector<CachedEntry> entries;
+    try {
+        for (const auto& entry : fs::directory_iterator(dir)) {
+            CachedEntry e;
+            e.path = entry.path();
+            e.name = e.path.filename().string();
+            e.isDirectory = entry.is_directory();
+            if (!e.isDirectory) {
+                try {
+                    e.size = fs::file_size(e.path);
+                } catch (...) {
+                    e.size = 0;
+                }
+            } else {
+                e.size = 0;
+            }
+            entries.push_back(std::move(e));
+        }
+    } catch (...) {
+        // Cache empty list on error so we don't retry every frame.
+    }
+
+    std::sort(entries.begin(), entries.end(), [](const CachedEntry& a, const CachedEntry& b) {
+        if (a.isDirectory != b.isDirectory) return a.isDirectory > b.isDirectory;
+        return a.name < b.name;
+    });
+
+    auto [insIt, _] = m_DirectoryCache.emplace(key, std::move(entries));
+    return insIt->second;
 }
 
 static bool ParseFirstFitsPairFromTxt(
@@ -212,6 +254,7 @@ void LabelDataBrowser::Render() {
     if (ImGui::Button("Refresh")) {
         // 目前是即时遍历，无缓存；Refresh 用于重新解析路径
         ResolveRootPath();
+        m_DirectoryCache.clear();
     }
     ImGui::SameLine();
     if (ImGui::Button("Default Root")) {
@@ -270,27 +313,17 @@ void LabelDataBrowser::Render() {
 }
 
 void LabelDataBrowser::RenderDirectoryTree(const fs::path& dir) {
-    std::vector<fs::directory_entry> entries;
-    try {
-        for (const auto& entry : fs::directory_iterator(dir)) {
-            entries.push_back(entry);
-        }
-    } catch (...) {
-        ImGui::TextUnformatted("(无法读取目录)");
-        return;
+    const auto& entries = GetDirectoryEntriesCached(dir);
+    if (entries.empty()) {
+        // Could be empty directory or unreadable; keep UI lightweight.
+        // Only show a hint for unreadable directories when it seems to exist but yields nothing.
+        // (We avoid probing filesystem again here.)
     }
 
-    std::sort(entries.begin(), entries.end(), [](const fs::directory_entry& a, const fs::directory_entry& b) {
-        const bool ad = a.is_directory();
-        const bool bd = b.is_directory();
-        if (ad != bd) return ad > bd;
-        return a.path().filename().string() < b.path().filename().string();
-    });
-
     for (const auto& entry : entries) {
-        const fs::path p = entry.path();
-        const std::string name = p.filename().string();
-        const bool isDir = entry.is_directory();
+        const fs::path p = entry.path;
+        const std::string& name = entry.name;
+        const bool isDir = entry.isDirectory;
 
         ImGui::PushID(p.string().c_str());
 
@@ -320,11 +353,7 @@ void LabelDataBrowser::RenderDirectoryTree(const fs::path& dir) {
             if (ImGui::IsItemClicked()) {
                 m_SelectedPath = p.string();
                 m_SelectedIsFile = true;
-                try {
-                    m_SelectedSize = fs::file_size(p);
-                } catch (...) {
-                    m_SelectedSize = 0;
-                }
+                m_SelectedSize = entry.size;
                 m_PreviewText = ReadTextFilePreview(p);
 
                 // If selecting a txt, parse a FITS pair for the application to load

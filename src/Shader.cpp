@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <utility>
 #include <glm/gtc/type_ptr.hpp>
 
 Shader::Shader()
@@ -65,6 +66,8 @@ bool Shader::LoadFromSource(const std::string& vertexSource, const std::string& 
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
 
+    // New program linked; cached locations are no longer valid.
+    m_UniformLocationCache.clear();
     return true;
 }
 
@@ -87,6 +90,10 @@ bool Shader::CompileShader(unsigned int& shader, const std::string& source, unsi
 }
 
 bool Shader::LinkProgram(unsigned int vertexShader, unsigned int fragmentShader) {
+    if (m_ProgramID != 0) {
+        glDeleteProgram(m_ProgramID);
+        m_ProgramID = 0;
+    }
     m_ProgramID = glCreateProgram();
     glAttachShader(m_ProgramID, vertexShader);
     glAttachShader(m_ProgramID, fragmentShader);
@@ -113,7 +120,14 @@ void Shader::Unbind() const {
 }
 
 int Shader::GetUniformLocation(const std::string& name) const {
-    return glGetUniformLocation(m_ProgramID, name.c_str());
+    auto it = m_UniformLocationCache.find(name);
+    if (it != m_UniformLocationCache.end()) {
+        return it->second;
+    }
+
+    const int location = glGetUniformLocation(m_ProgramID, name.c_str());
+    m_UniformLocationCache.emplace(name, location);
+    return location;
 }
 
 void Shader::SetBool(const std::string& name, bool value) const {

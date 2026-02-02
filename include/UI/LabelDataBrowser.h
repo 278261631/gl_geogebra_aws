@@ -2,6 +2,8 @@
 
 #include <string>
 #include <filesystem>
+#include <unordered_map>
+#include <vector>
 
 class LabelDataBrowser {
 public:
@@ -30,6 +32,15 @@ private:
     void RenderDirectoryTree(const std::filesystem::path& dir);
     void TryParseFitsPairFromTxtSelection(const std::filesystem::path& txtPath);
 
+    struct CachedEntry {
+        std::filesystem::path path;
+        std::string name;
+        bool isDirectory;
+        std::uintmax_t size;
+    };
+
+    const std::vector<CachedEntry>& GetDirectoryEntriesCached(const std::filesystem::path& dir);
+
     bool m_IsOpen;
     std::string m_RootPath;          // configured root (usually relative)
     std::string m_ResolvedRootPath;  // absolute path used for browsing
@@ -43,5 +54,8 @@ private:
     std::string m_NewTemplateFitsPath;
     std::string m_NewFitsSourceTxtPath;
     std::string m_LastParseMessage;
+
+    // Cache directory listings so the UI doesn't re-scan the filesystem every frame.
+    std::unordered_map<std::string, std::vector<CachedEntry>> m_DirectoryCache;
 };
 

@@ -1,7 +1,21 @@
 #include "Geometry/PointCloud.h"
 #include "Shader.h"
 #include <glad/glad.h>
+#include <algorithm>
+#include <cstdint>
 #include <iostream>
+
+namespace {
+struct PackedVertex {
+    float x, y, z;
+    std::uint8_t r, g, b, a;
+};
+
+static std::uint8_t ToU8(float v) {
+    v = std::clamp(v, 0.0f, 1.0f);
+    return static_cast<std::uint8_t>(v * 255.0f + 0.5f);
+}
+} // namespace
 
 PointCloud::PointCloud()
     : GeometryObject(GeometryType::Point)
@@ -19,21 +33,20 @@ void PointCloud::Initialize() {
         return;
     }
 
-    // Create interleaved vertex data: position (3) + color (4)
-    std::vector<float> vertices;
-    vertices.reserve(m_Positions.size() * 7);
+    // Create interleaved vertex data:
+    // position: 3 * float (12B)
+    // color:    4 * uint8 normalized (4B)
+    // Total ~16B/point (vs previous 28B/point with vec4 floats)
+    std::vector<PackedVertex> vertices;
+    vertices.reserve(m_Positions.size());
 
     for (size_t i = 0; i < m_Positions.size(); i++) {
-        // Position
-        vertices.push_back(m_Positions[i].x);
-        vertices.push_back(m_Positions[i].y);
-        vertices.push_back(m_Positions[i].z);
-        
-        // Color
-        vertices.push_back(m_Colors[i].r);
-        vertices.push_back(m_Colors[i].g);
-        vertices.push_back(m_Colors[i].b);
-        vertices.push_back(m_Colors[i].a);
+        const auto& p = m_Positions[i];
+        const auto& c = m_Colors[i];
+        vertices.push_back(PackedVertex{
+            p.x, p.y, p.z,
+            ToU8(c.r), ToU8(c.g), ToU8(c.b), ToU8(c.a),
+        });
     }
 
     m_PointCount = static_cast<int>(m_Positions.size());
@@ -48,14 +61,14 @@ void PointCloud::Initialize() {
 
     glBindVertexArray(m_VAO);
     glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(PackedVertex), vertices.data(), GL_STATIC_DRAW);
 
     // Position attribute (location = 0)
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(PackedVertex), (void*)0);
     glEnableVertexAttribArray(0);
 
     // Color attribute (location = 1)
-    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(PackedVertex), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
     glBindVertexArray(0);
@@ -101,24 +114,23 @@ void PointCloud::UpdateBuffers() {
     }
 
     // Update existing buffer data
-    std::vector<float> vertices;
-    vertices.reserve(m_Positions.size() * 7);
+    std::vector<PackedVertex> vertices;
+    vertices.reserve(m_Positions.size());
 
     for (size_t i = 0; i < m_Positions.size(); i++) {
-        vertices.push_back(m_Positions[i].x);
-        vertices.push_back(m_Positions[i].y);
-        vertices.push_back(m_Positions[i].z);
-        vertices.push_back(m_Colors[i].r);
-        vertices.push_back(m_Colors[i].g);
-        vertices.push_back(m_Colors[i].b);
-        vertices.push_back(m_Colors[i].a);
+        const auto& p = m_Positions[i];
+        const auto& c = m_Colors[i];
+        vertices.push_back(PackedVertex{
+            p.x, p.y, p.z,
+            ToU8(c.r), ToU8(c.g), ToU8(c.b), ToU8(c.a),
+        });
     }
 
     m_PointCount = static_cast<int>(m_Positions.size());
 
     if (m_VBO != 0) {
         glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
-        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(PackedVertex), vertices.data(), GL_STATIC_DRAW);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
 
