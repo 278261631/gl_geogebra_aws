@@ -138,6 +138,47 @@ void Application::Update(float deltaTime) {
 
     // Check for new FITS pair selection from label txt
     LabelDataBrowser* labelBrowser = m_UIManager->GetLabelDataBrowser();
+    if (labelBrowser && labelBrowser->HasCenterCameraOnRoiRequest()) {
+        labelBrowser->ClearCenterCameraOnRoiRequest();
+
+        if (labelBrowser->HasPixelCenter()) {
+            const int roiX = labelBrowser->GetPixelX();
+            const int roiY = labelBrowser->GetPixelY();
+
+            // Prefer aligned FITS if present, otherwise template FITS.
+            std::string fitsPath = labelBrowser->GetNewAlignedFitsPath();
+            if (fitsPath.empty()) {
+                fitsPath = labelBrowser->GetNewTemplateFitsPath();
+            }
+
+            namespace fs = std::filesystem;
+            if (!fitsPath.empty() && fs::exists(fs::path(fitsPath))) {
+                // Load image data so we can sample the ROI center height.
+                if (m_ImageLoader->LoadImage(fitsPath)) {
+                    // Must match the mapping used in LoadImageAndGeneratePointsInternal.
+                    const float scaleX = 0.1f;
+                    const float scaleY = 10.0f;
+                    const float scaleZ = 0.1f;
+
+                    const float centerX = m_ImageLoader->GetWidth() * 0.5f;
+                    const float centerZ = m_ImageLoader->GetHeight() * 0.5f;
+
+                    const float height = m_ImageLoader->GetNormalizedPixelValue(roiX, roiY) * scaleY;
+                    const glm::vec3 newTarget(
+                        (roiX - centerX) * scaleX,
+                        height,
+                        (roiY - centerZ) * scaleZ);
+
+                    // Keep view direction stable: translate position by the same delta as target.
+                    const glm::vec3 oldTarget = m_Camera->GetTarget();
+                    const glm::vec3 delta = newTarget - oldTarget;
+                    m_Camera->SetTarget(newTarget);
+                    m_Camera->SetPosition(m_Camera->GetPosition() + delta);
+                }
+            }
+        }
+    }
+
     if (labelBrowser && labelBrowser->HasNewFitsPair()) {
         const std::string alignedFits = labelBrowser->GetNewAlignedFitsPath();
         const std::string templateFits = labelBrowser->GetNewTemplateFitsPath();

@@ -36,6 +36,10 @@ public:
     bool IsRoiEnabled() const { return m_RoiEnabled; }
     int GetRoiRadius() const { return m_RoiRadius; }
 
+    // Event: center camera view/rotation on ROI center (pixel_x, pixel_y)
+    bool HasCenterCameraOnRoiRequest() const { return m_RequestCenterCameraOnRoi; }
+    void ClearCenterCameraOnRoiRequest() { m_RequestCenterCameraOnRoi = false; }
+
 private:
     void ResolveRootPath();
     void RenderDirectoryTree(const std::filesystem::path& dir);
@@ -70,6 +74,7 @@ private:
 
     bool m_RoiEnabled;
     int m_RoiRadius;
+    bool m_RequestCenterCameraOnRoi;
 
     // Cache directory listings so the UI doesn't re-scan the filesystem every frame.
     std::unordered_map<std::string, std::vector<CachedEntry>> m_DirectoryCache;

@@ -51,7 +51,8 @@ LabelDataBrowser::LabelDataBrowser()
     , m_PixelX(0)
     , m_PixelY(0)
     , m_RoiEnabled(true)
-    , m_RoiRadius(200) {
+    , m_RoiRadius(200)
+    , m_RequestCenterCameraOnRoi(false) {
     ResolveRootPath();
 }
 
@@ -351,6 +352,10 @@ void LabelDataBrowser::Render() {
                     if (!m_NewAlignedFitsPath.empty() || !m_NewTemplateFitsPath.empty()) {
                         m_HasNewFitsPair = true;
                     }
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Center view/rotate on ROI")) {
+                    m_RequestCenterCameraOnRoi = true;
                 }
             }
             ImGui::Separator();
