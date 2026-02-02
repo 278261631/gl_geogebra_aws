@@ -39,6 +39,13 @@ private:
     void Update(float deltaTime);
     void Render();
 
+    void LoadImageAndGeneratePointsInternal(const std::string& filepath,
+                                            bool replaceExisting,
+                                            bool useRoi,
+                                            int roiPixelX,
+                                            int roiPixelY,
+                                            int roiRadiusPixels);
+
     std::unique_ptr<Window> m_Window;
     std::unique_ptr<Renderer> m_Renderer;
     std::unique_ptr<Camera> m_Camera;

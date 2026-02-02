@@ -151,14 +151,21 @@ void Application::Update(float deltaTime) {
         std::cout << "  aligned:  " << alignedFits << std::endl;
         std::cout << "  template: " << templateFits << std::endl;
 
+        const bool useRoi = labelBrowser->HasPixelCenter() && labelBrowser->IsRoiEnabled();
+        const int roiX = labelBrowser->GetPixelX();
+        const int roiY = labelBrowser->GetPixelY();
+        int roiR = labelBrowser->GetRoiRadius();
+        if (roiR < 50) roiR = 50;
+        if (roiR > 500) roiR = 500;
+
         if (!alignedFits.empty() && fs::exists(fs::path(alignedFits))) {
-            LoadImageAndGeneratePoints(alignedFits);
+            LoadImageAndGeneratePointsInternal(alignedFits, /*replaceExisting*/ true, useRoi, roiX, roiY, roiR);
         } else {
             std::cerr << "Aligned FITS not found: " << alignedFits << std::endl;
         }
 
         if (!templateFits.empty() && fs::exists(fs::path(templateFits))) {
-            LoadImageAndGeneratePoints(templateFits);
+            LoadImageAndGeneratePointsInternal(templateFits, /*replaceExisting*/ true, useRoi, roiX, roiY, roiR);
         } else {
             std::cerr << "Template FITS not found: " << templateFits << std::endl;
         }
@@ -220,10 +227,27 @@ void Application::RemoveGeometryObject(std::shared_ptr<GeometryObject> object) {
 }
 
 void Application::LoadImageAndGeneratePoints(const std::string& filepath) {
-    // Check if already loaded
-    if (m_ImagePointsMap.find(filepath) != m_ImagePointsMap.end()) {
-        std::cout << "Image already loaded: " << filepath << std::endl;
-        return;
+    // Normal image loading: keep previous behavior (skip if already loaded).
+    LoadImageAndGeneratePointsInternal(filepath, /*replaceExisting*/ false, /*useRoi*/ false, 0, 0, 0);
+}
+
+void Application::LoadImageAndGeneratePointsInternal(const std::string& filepath,
+                                                     bool replaceExisting,
+                                                     bool useRoi,
+                                                     int roiPixelX,
+                                                     int roiPixelY,
+                                                     int roiRadiusPixels) {
+    if (!replaceExisting) {
+        // Check if already loaded
+        if (m_ImagePointsMap.find(filepath) != m_ImagePointsMap.end()) {
+            std::cout << "Image already loaded: " << filepath << std::endl;
+            return;
+        }
+    } else {
+        // Replace existing point cloud(s) for this filepath
+        if (m_ImagePointsMap.find(filepath) != m_ImagePointsMap.end()) {
+            RemoveImagePoints(filepath);
+        }
     }
 
     if (!m_ImageLoader->LoadImage(filepath)) {
@@ -233,15 +257,18 @@ void Application::LoadImageAndGeneratePoints(const std::string& filepath) {
 
     // Generate point cloud from image with original colors
     // Now: pixel(x,y) -> 3D(x,z), pixel value -> y height
-    float scaleX = 0.1f;  // Scale for X (pixel X -> world X)
-    float scaleY = 10.0f; // Scale for Y (pixel value -> world Y height)
-    float scaleZ = 0.1f;  // Scale for Z (pixel Y -> world Z)
+    const float scaleX = 0.1f;  // Scale for X (pixel X -> world X)
+    const float scaleY = 10.0f; // Scale for Y (pixel value -> world Y height)
+    const float scaleZ = 0.1f;  // Scale for Z (pixel Y -> world Z)
 
     std::vector<glm::vec3> positions;
     std::vector<glm::vec4> colors;
 
-    // Use the new method that preserves original colors
-    m_ImageLoader->GeneratePointCloudWithColors(positions, colors, scaleX, scaleY, scaleZ);
+    if (useRoi) {
+        m_ImageLoader->GeneratePointCloudWithColorsROI(positions, colors, roiPixelX, roiPixelY, roiRadiusPixels, scaleX, scaleY, scaleZ);
+    } else {
+        m_ImageLoader->GeneratePointCloudWithColors(positions, colors, scaleX, scaleY, scaleZ);
+    }
 
     std::cout << "Creating point cloud with " << positions.size() << " points..." << std::endl;
 

@@ -41,6 +41,17 @@ public:
                                       float scaleY = 1.0f,
                                       float scaleZ = 1.0f) const;
 
+    // Generate point cloud with original colors, but only within a pixel ROI around (pixelX, pixelY).
+    // radiusPixels: neighborhood radius in pixels (e.g. 50-500).
+    void GeneratePointCloudWithColorsROI(std::vector<glm::vec3>& positions,
+                                         std::vector<glm::vec4>& colors,
+                                         int pixelX,
+                                         int pixelY,
+                                         int radiusPixels,
+                                         float scaleX = 1.0f,
+                                         float scaleY = 1.0f,
+                                         float scaleZ = 1.0f) const;
+
 private:
     bool LoadStandardImage(const std::string& filepath);
     bool LoadFitsImage(const std::string& filepath);

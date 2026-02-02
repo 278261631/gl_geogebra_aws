@@ -27,6 +27,15 @@ public:
     const std::string& GetNewFitsSourceTxtPath() const { return m_NewFitsSourceTxtPath; }
     const std::string& GetLastParseMessage() const { return m_LastParseMessage; }
 
+    // Parsed pixel center (from txt record)
+    bool HasPixelCenter() const { return m_HasPixelCenter; }
+    int GetPixelX() const { return m_PixelX; }
+    int GetPixelY() const { return m_PixelY; }
+
+    // ROI controls for filtering points around (pixel_x, pixel_y)
+    bool IsRoiEnabled() const { return m_RoiEnabled; }
+    int GetRoiRadius() const { return m_RoiRadius; }
+
 private:
     void ResolveRootPath();
     void RenderDirectoryTree(const std::filesystem::path& dir);
@@ -54,6 +63,13 @@ private:
     std::string m_NewTemplateFitsPath;
     std::string m_NewFitsSourceTxtPath;
     std::string m_LastParseMessage;
+
+    bool m_HasPixelCenter;
+    int m_PixelX;
+    int m_PixelY;
+
+    bool m_RoiEnabled;
+    int m_RoiRadius;
 
     // Cache directory listings so the UI doesn't re-scan the filesystem every frame.
     std::unordered_map<std::string, std::vector<CachedEntry>> m_DirectoryCache;

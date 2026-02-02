@@ -46,7 +46,12 @@ LabelDataBrowser::LabelDataBrowser()
     , m_NewAlignedFitsPath("")
     , m_NewTemplateFitsPath("")
     , m_NewFitsSourceTxtPath("")
-    , m_LastParseMessage("") {
+    , m_LastParseMessage("")
+    , m_HasPixelCenter(false)
+    , m_PixelX(0)
+    , m_PixelY(0)
+    , m_RoiEnabled(true)
+    , m_RoiRadius(200) {
     ResolveRootPath();
 }
 
@@ -117,10 +122,16 @@ static bool ParseFirstFitsPairFromTxt(
     std::string& outFileDir,
     std::string& outAlignedFilename,
     std::string& outTemplateAlignedFilename,
+    bool& outHasPixelCenter,
+    int& outPixelX,
+    int& outPixelY,
     std::string& outError) {
     outFileDir.clear();
     outAlignedFilename.clear();
     outTemplateAlignedFilename.clear();
+    outHasPixelCenter = false;
+    outPixelX = 0;
+    outPixelY = 0;
     outError.clear();
 
     std::ifstream in(txtPath, std::ios::in);
@@ -135,12 +146,26 @@ static bool ParseFirstFitsPairFromTxt(
         if (!line.empty() && line[0] == '#') continue;
 
         // Expected (whitespace-separated):
-        // index file_dir aligned_filename template_aligned_filename ...
+        // index file_dir aligned_filename template_aligned_filename fits_center_ra fits_center_dec time pixel_x pixel_y ...
         std::istringstream iss(line);
         std::string index;
         if (!(iss >> index >> outFileDir >> outAlignedFilename >> outTemplateAlignedFilename)) {
             // Not enough tokens, keep scanning
             continue;
+        }
+
+        // Try parse optional pixel center fields (format in header line).
+        // We ignore fields before pixel_x/pixel_y if present: fits_center_ra fits_center_dec time
+        // Example:
+        // 0001 <file_dir> <aligned> <template> 284.2 17.2 20250628_193509 749 2258 285.9 17.4
+        double fits_center_ra = 0.0;
+        double fits_center_dec = 0.0;
+        std::string timeStr;
+        int px = 0, py = 0;
+        if ((iss >> fits_center_ra >> fits_center_dec >> timeStr >> px >> py)) {
+            outHasPixelCenter = true;
+            outPixelX = px;
+            outPixelY = py;
         }
         return true;
     }
@@ -185,9 +210,14 @@ void LabelDataBrowser::TryParseFitsPairFromTxtSelection(const fs::path& txtPath)
     m_NewTemplateFitsPath.clear();
     m_NewFitsSourceTxtPath.clear();
     m_LastParseMessage.clear();
+    m_HasPixelCenter = false;
+    m_PixelX = 0;
+    m_PixelY = 0;
 
     std::string fileDir, alignedName, templateName, err;
-    if (!ParseFirstFitsPairFromTxt(txtPath, fileDir, alignedName, templateName, err)) {
+    bool hasPixelCenter = false;
+    int px = 0, py = 0;
+    if (!ParseFirstFitsPairFromTxt(txtPath, fileDir, alignedName, templateName, hasPixelCenter, px, py, err)) {
         m_LastParseMessage = "解析失败: " + err;
         return;
     }
@@ -223,10 +253,25 @@ void LabelDataBrowser::TryParseFitsPairFromTxtSelection(const fs::path& txtPath)
     m_NewTemplateFitsPath = templateCandidate.string();
     m_NewFitsSourceTxtPath = txtPath.string();
 
+    m_HasPixelCenter = hasPixelCenter;
+    m_PixelX = px;
+    m_PixelY = py;
+
+    // Clamp ROI radius to requested range; keep enabled by default when we have pixel center.
+    if (m_RoiRadius < 50) m_RoiRadius = 50;
+    if (m_RoiRadius > 500) m_RoiRadius = 500;
+    if (!m_HasPixelCenter) {
+        // If we don't have pixel center, ROI cannot be applied.
+        m_RoiEnabled = false;
+    }
+
     m_HasNewFitsPair = true;
 
     std::ostringstream oss;
     oss << "OK: aligned=" << alignedName << ", template=" << templateName;
+    if (m_HasPixelCenter) {
+        oss << ", pixel=(" << m_PixelX << "," << m_PixelY << ")";
+    }
     m_LastParseMessage = oss.str();
 }
 
@@ -292,6 +337,20 @@ void LabelDataBrowser::Render() {
                 if (!m_NewAlignedFitsPath.empty() || !m_NewTemplateFitsPath.empty()) {
                     ImGui::Text("Aligned FITS: %s", m_NewAlignedFitsPath.c_str());
                     ImGui::Text("Template FITS: %s", m_NewTemplateFitsPath.c_str());
+                }
+            }
+
+            // ROI controls (only meaningful when pixel center exists)
+            if (m_HasPixelCenter) {
+                ImGui::Separator();
+                ImGui::Text("Pixel Center: (%d, %d)", m_PixelX, m_PixelY);
+                ImGui::Checkbox("Only show neighborhood points (ROI)", &m_RoiEnabled);
+                ImGui::SliderInt("ROI radius (pixels)", &m_RoiRadius, 50, 500);
+                if (ImGui::Button("Reload FITS with ROI")) {
+                    // Trigger the event again with current ROI settings
+                    if (!m_NewAlignedFitsPath.empty() || !m_NewTemplateFitsPath.empty()) {
+                        m_HasNewFitsPair = true;
+                    }
                 }
             }
             ImGui::Separator();
