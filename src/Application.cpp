@@ -8,8 +8,10 @@
 #include "UI/LabelDataBrowser.h"
 #include <iostream>
 #include <cmath>
+#include <algorithm>
 #include <GLFW/glfw3.h>
 #include <imgui.h>
+#include <glad/glad.h>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <filesystem>
@@ -17,6 +19,10 @@
 Application::Application()
     : m_Running(false)
     , m_LastFrameTime(0.0f)
+    , m_AlignedPreviewTex(0)
+    , m_TemplatePreviewTex(0)
+    , m_AlignedPreviewSize(0)
+    , m_TemplatePreviewSize(0)
 {
 }
 
@@ -99,6 +105,20 @@ void Application::Run() {
 }
 
 void Application::Shutdown() {
+    // Delete preview textures while OpenGL context is still valid.
+    if (m_AlignedPreviewTex != 0) {
+        glDeleteTextures(1, &m_AlignedPreviewTex);
+        m_AlignedPreviewTex = 0;
+    }
+    if (m_TemplatePreviewTex != 0) {
+        glDeleteTextures(1, &m_TemplatePreviewTex);
+        m_TemplatePreviewTex = 0;
+    }
+    m_AlignedPreviewSize = 0;
+    m_TemplatePreviewSize = 0;
+    m_AlignedPreviewName.clear();
+    m_TemplatePreviewName.clear();
+
     m_GeometryObjects.clear();
     m_Axes.reset();
     m_Grid.reset();
@@ -211,7 +231,8 @@ void Application::Update(float deltaTime) {
             if (highlightScale > 20.0f) highlightScale = 20.0f;
             const glm::vec4 alignedHighlight(1.0f, 0.2706f, 0.0f, 1.0f);   // OrangeRed (#FF4500)
             LoadImageAndGeneratePointsInternal(alignedFits, /*replaceExisting*/ true, useRoi, roiX, roiY, roiR,
-                                               doHighlight, roiX, roiY, highlightSize, alignedHighlight, highlightScale);
+                                               doHighlight, roiX, roiY, highlightSize, alignedHighlight, highlightScale,
+                                               /*previewSlot*/ 1);
         } else {
             std::cerr << "Aligned FITS not found: " << alignedFits << std::endl;
         }
@@ -226,7 +247,8 @@ void Application::Update(float deltaTime) {
             if (highlightScale > 20.0f) highlightScale = 20.0f;
             const glm::vec4 templateHighlight(0.5294f, 0.8078f, 0.9216f, 1.0f); // SkyBlue (#87CEEB)
             LoadImageAndGeneratePointsInternal(templateFits, /*replaceExisting*/ true, useRoi, roiX, roiY, roiR,
-                                               doHighlight, roiX, roiY, highlightSize, templateHighlight, highlightScale);
+                                               doHighlight, roiX, roiY, highlightSize, templateHighlight, highlightScale,
+                                               /*previewSlot*/ 2);
         } else {
             std::cerr << "Template FITS not found: " << templateFits << std::endl;
         }
@@ -268,12 +290,169 @@ void Application::Render() {
     m_UIManager->BeginFrame();
     m_UIManager->Render();
 
+    // Top-right preview for aligned/template ROI patch
+    RenderFitsRoiPreviewWindow();
+
     // Render 3D labels for grid and axes
     Render3DLabels();
 
     m_UIManager->EndFrame();
 
     m_Renderer->EndFrame();
+}
+
+static void EnsureTexture2D(unsigned int& tex) {
+    if (tex != 0) return;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void Application::UpdatePreviewTextureFromCurrentImage(int previewSlot,
+                                                       const std::string& filepath,
+                                                       int cropCenterX,
+                                                       int cropCenterY,
+                                                       int cropSizePixels,
+                                                       const glm::vec4& tintColor,
+                                                       float tintAlpha) {
+    if (previewSlot != 1 && previewSlot != 2) return;
+    if (!m_ImageLoader || !m_ImageLoader->IsLoaded()) return;
+
+    cropSizePixels = std::clamp(cropSizePixels, 1, 300);
+    // NOTE: Preview should show original FITS brightness (no tint). We keep the params for API stability.
+    (void)tintColor;
+    (void)tintAlpha;
+
+    unsigned int* texPtr = (previewSlot == 1) ? &m_AlignedPreviewTex : &m_TemplatePreviewTex;
+    int* sizePtr = (previewSlot == 1) ? &m_AlignedPreviewSize : &m_TemplatePreviewSize;
+    std::string* namePtr = (previewSlot == 1) ? &m_AlignedPreviewName : &m_TemplatePreviewName;
+
+    EnsureTexture2D(*texPtr);
+    *sizePtr = cropSizePixels;
+    try {
+        *namePtr = std::filesystem::path(filepath).filename().string();
+    } catch (...) {
+        *namePtr = filepath;
+    }
+
+    const int w = m_ImageLoader->GetWidth();
+    const int h = m_ImageLoader->GetHeight();
+    if (w <= 0 || h <= 0) return;
+
+    const int half = cropSizePixels / 2;
+    const int xStart = cropCenterX - half;
+    const int yStart = cropCenterY - half;
+
+    const bool isFits = m_ImageLoader->IsFits();
+    std::vector<unsigned char> rgba(static_cast<std::size_t>(cropSizePixels) * cropSizePixels * 4);
+
+    // For FITS, do a local contrast stretch so deep bit-depth data looks like a normal image.
+    float stretchLow = 0.0f;
+    float stretchHigh = 1.0f;
+    std::vector<float> grayVals;
+    if (isFits) {
+        grayVals.reserve(static_cast<std::size_t>(cropSizePixels) * cropSizePixels);
+        for (int j = 0; j < cropSizePixels; j++) {
+            for (int i = 0; i < cropSizePixels; i++) {
+                const int x = std::clamp(xStart + i, 0, w - 1);
+                const int y = std::clamp(yStart + j, 0, h - 1);
+                grayVals.push_back(m_ImageLoader->GetNormalizedPixelValue(x, y));
+            }
+        }
+        auto quantile = [&](float q) -> float {
+            if (grayVals.empty()) return 0.0f;
+            const std::size_t n = grayVals.size();
+            const std::size_t idx = static_cast<std::size_t>(std::clamp(q, 0.0f, 1.0f) * float(n - 1));
+            std::vector<float> tmp = grayVals;
+            std::nth_element(tmp.begin(), tmp.begin() + idx, tmp.end());
+            return tmp[idx];
+        };
+        stretchLow = quantile(0.01f);
+        stretchHigh = quantile(0.99f);
+        if (stretchHigh - stretchLow < 1e-6f) {
+            stretchLow = 0.0f;
+            stretchHigh = 1.0f;
+        }
+    }
+
+    for (int j = 0; j < cropSizePixels; j++) {
+        for (int i = 0; i < cropSizePixels; i++) {
+            const int x = std::clamp(xStart + i, 0, w - 1);
+            const int y = std::clamp(yStart + j, 0, h - 1);
+
+            glm::vec3 out(0.0f);
+            if (isFits) {
+                // Contrast stretch to [0,1], then apply a mild gamma to lift shadows.
+                const float v = m_ImageLoader->GetNormalizedPixelValue(x, y);
+                float t = (v - stretchLow) / (stretchHigh - stretchLow);
+                t = std::clamp(t, 0.0f, 1.0f);
+                // Gamma-like curve (sqrt) to make dim structures more visible.
+                t = std::sqrt(t);
+                out = glm::vec3(t, t, t);
+            } else {
+                // Standard images are already in display range.
+                out = m_ImageLoader->GetPixelColor(x, y);
+            }
+
+            const std::size_t idx = (static_cast<std::size_t>(j) * cropSizePixels + i) * 4;
+            rgba[idx + 0] = static_cast<unsigned char>(std::clamp(out.r, 0.0f, 1.0f) * 255.0f);
+            rgba[idx + 1] = static_cast<unsigned char>(std::clamp(out.g, 0.0f, 1.0f) * 255.0f);
+            rgba[idx + 2] = static_cast<unsigned char>(std::clamp(out.b, 0.0f, 1.0f) * 255.0f);
+            rgba[idx + 3] = 255;
+        }
+    }
+
+    glBindTexture(GL_TEXTURE_2D, *texPtr);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, cropSizePixels, cropSizePixels, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void Application::RenderFitsRoiPreviewWindow() {
+    if (m_AlignedPreviewTex == 0 && m_TemplatePreviewTex == 0) return;
+
+    const int windowWidth = m_Window ? m_Window->GetWidth() : 0;
+    const int windowHeight = m_Window ? m_Window->GetHeight() : 0;
+    if (windowWidth <= 0 || windowHeight <= 0) return;
+
+    const float margin = 10.0f;
+    const float preferredWinW = 320.0f;
+
+    ImGui::SetNextWindowPos(ImVec2(windowWidth - preferredWinW - margin, margin), ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.85f);
+
+    ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoCollapse |
+        ImGuiWindowFlags_AlwaysAutoResize;
+
+    if (!ImGui::Begin("FITS ROI Preview", nullptr, flags)) {
+        ImGui::End();
+        return;
+    }
+
+    const float targetImageW = 280.0f; // keep aspect correct and stable
+
+    auto drawPreview = [&](const char* label, unsigned int tex, const std::string& name) {
+        ImGui::Text("%s: %s", label, name.empty() ? "(none)" : name.c_str());
+        if (tex != 0) {
+            // Keep aspect ratio correct (our preview textures are square crops).
+            ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(tex)), ImVec2(targetImageW, targetImageW));
+        } else {
+            ImGui::Dummy(ImVec2(targetImageW, targetImageW));
+            ImGui::TextUnformatted("(no preview)");
+        }
+    };
+
+    drawPreview("aligned", m_AlignedPreviewTex, m_AlignedPreviewName);
+    ImGui::Separator();
+    drawPreview("template", m_TemplatePreviewTex, m_TemplatePreviewName);
+
+    ImGui::End();
 }
 
 void Application::AddGeometryObject(std::shared_ptr<GeometryObject> object) {
@@ -290,7 +469,8 @@ void Application::RemoveGeometryObject(std::shared_ptr<GeometryObject> object) {
 void Application::LoadImageAndGeneratePoints(const std::string& filepath) {
     // Normal image loading: keep previous behavior (skip if already loaded).
     LoadImageAndGeneratePointsInternal(filepath, /*replaceExisting*/ false, /*useRoi*/ false, 0, 0, 0,
-                                       /*useHighlight*/ false, 0, 0, 0, glm::vec4(0.0f), 1.0f);
+                                       /*useHighlight*/ false, 0, 0, 0, glm::vec4(0.0f), 1.0f,
+                                       /*previewSlot*/ 0);
 }
 
 void Application::LoadImageAndGeneratePointsInternal(const std::string& filepath,
@@ -304,7 +484,8 @@ void Application::LoadImageAndGeneratePointsInternal(const std::string& filepath
                                                      int highlightCenterY,
                                                      int highlightSizePixels,
                                                      const glm::vec4& highlightColor,
-                                                     float highlightPointSizeScale) {
+                                                     float highlightPointSizeScale,
+                                                     int previewSlot) {
     if (!replaceExisting) {
         // Check if already loaded
         if (m_ImagePointsMap.find(filepath) != m_ImagePointsMap.end()) {
@@ -321,6 +502,14 @@ void Application::LoadImageAndGeneratePointsInternal(const std::string& filepath
     if (!m_ImageLoader->LoadImage(filepath)) {
         std::cerr << "Failed to load image: " << filepath << std::endl;
         return;
+    }
+
+    // Update preview texture using the freshly loaded image.
+    if (previewSlot == 1 || previewSlot == 2) {
+        // Use highlightSizePixels as crop size (i.e., "染色区域") and tint it.
+        // We keep a moderate alpha so the underlying content remains visible.
+        // Preview should be raw FITS brightness (no tint). Stretch is handled internally.
+        UpdatePreviewTextureFromCurrentImage(previewSlot, filepath, highlightCenterX, highlightCenterY, highlightSizePixels, highlightColor, 0.0f);
     }
 
     // Generate point cloud from image with original colors

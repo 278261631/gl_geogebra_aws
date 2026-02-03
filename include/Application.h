@@ -11,6 +11,7 @@
 #include "Axes.h"
 #include "ImageLoader.h"
 #include <vector>
+#include <string>
 
 class GeometryObject;
 
@@ -38,6 +39,7 @@ public:
 private:
     void Update(float deltaTime);
     void Render();
+    void RenderFitsRoiPreviewWindow();
 
     void LoadImageAndGeneratePointsInternal(const std::string& filepath,
                                             bool replaceExisting,
@@ -50,7 +52,16 @@ private:
                                             int highlightCenterY,
                                             int highlightSizePixels,
                                             const glm::vec4& highlightColor,
-                                            float highlightPointSizeScale);
+                                            float highlightPointSizeScale,
+                                            int previewSlot /*0:none, 1:aligned, 2:template*/);
+
+    void UpdatePreviewTextureFromCurrentImage(int previewSlot,
+                                              const std::string& filepath,
+                                              int cropCenterX,
+                                              int cropCenterY,
+                                              int cropSizePixels,
+                                              const glm::vec4& tintColor,
+                                              float tintAlpha);
 
     std::unique_ptr<Window> m_Window;
     std::unique_ptr<Renderer> m_Renderer;
@@ -66,5 +77,13 @@ private:
 
     bool m_Running;
     float m_LastFrameTime;
+
+    // ROI preview textures (aligned/template)
+    unsigned int m_AlignedPreviewTex;
+    unsigned int m_TemplatePreviewTex;
+    int m_AlignedPreviewSize;
+    int m_TemplatePreviewSize;
+    std::string m_AlignedPreviewName;
+    std::string m_TemplatePreviewName;
 };
 
