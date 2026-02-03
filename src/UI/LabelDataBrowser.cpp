@@ -53,6 +53,8 @@ LabelDataBrowser::LabelDataBrowser()
     , m_HasActivePixelCenter(false)
     , m_ActivePixelX(0)
     , m_ActivePixelY(0)
+    , m_TxtTargets()
+    , m_SelectedTxtTargetIndex(-1)
     , m_RoiEnabled(true)
     , m_RoiRadius(200)
     , m_HighlightSizePixels(10)
@@ -123,21 +125,10 @@ const std::vector<LabelDataBrowser::CachedEntry>& LabelDataBrowser::GetDirectory
     return insIt->second;
 }
 
-static bool ParseFirstFitsPairFromTxt(
-    const fs::path& txtPath,
-    std::string& outFileDir,
-    std::string& outAlignedFilename,
-    std::string& outTemplateAlignedFilename,
-    bool& outHasPixelCenter,
-    int& outPixelX,
-    int& outPixelY,
-    std::string& outError) {
-    outFileDir.clear();
-    outAlignedFilename.clear();
-    outTemplateAlignedFilename.clear();
-    outHasPixelCenter = false;
-    outPixelX = 0;
-    outPixelY = 0;
+static bool ParseAllTargetsFromTxt(const fs::path& txtPath,
+                                  std::vector<LabelDataBrowser::TxtTargetRecord>& outTargets,
+                                  std::string& outError) {
+    outTargets.clear();
     outError.clear();
 
     std::ifstream in(txtPath, std::ios::in);
@@ -152,32 +143,38 @@ static bool ParseFirstFitsPairFromTxt(
         if (!line.empty() && line[0] == '#') continue;
 
         // Expected (whitespace-separated):
-        // index file_dir aligned_filename template_aligned_filename fits_center_ra fits_center_dec time pixel_x pixel_y ...
+        // index file_dir aligned_filename template_aligned_filename fits_center_ra fits_center_dec time pixel_x pixel_y ra dec
         std::istringstream iss(line);
-        std::string index;
-        if (!(iss >> index >> outFileDir >> outAlignedFilename >> outTemplateAlignedFilename)) {
-            // Not enough tokens, keep scanning
+        LabelDataBrowser::TxtTargetRecord rec;
+        if (!(iss >> rec.index >> rec.fileDir >> rec.alignedFilename >> rec.templateAlignedFilename)) {
             continue;
         }
 
-        // Try parse optional pixel center fields (format in header line).
-        // We ignore fields before pixel_x/pixel_y if present: fits_center_ra fits_center_dec time
-        // Example:
-        // 0001 <file_dir> <aligned> <template> 284.2 17.2 20250628_193509 749 2258 285.9 17.4
+        // Optional fields
         double fits_center_ra = 0.0;
         double fits_center_dec = 0.0;
         std::string timeStr;
         int px = 0, py = 0;
+        double ra = 0.0, dec = 0.0;
         if ((iss >> fits_center_ra >> fits_center_dec >> timeStr >> px >> py)) {
-            outHasPixelCenter = true;
-            outPixelX = px;
-            outPixelY = py;
+            rec.hasPixelCenter = true;
+            rec.pixelX = px;
+            rec.pixelY = py;
+            if ((iss >> ra >> dec)) {
+                rec.hasRaDec = true;
+                rec.ra = ra;
+                rec.dec = dec;
+            }
         }
-        return true;
+
+        outTargets.push_back(std::move(rec));
     }
 
-    outError = "txt 中未找到数据行";
-    return false;
+    if (outTargets.empty()) {
+        outError = "txt 中未找到数据行";
+        return false;
+    }
+    return true;
 }
 
 static bool TryFindFileByNameUnder(const fs::path& root, const std::string& filename, fs::path& outPath) {
@@ -222,22 +219,46 @@ void LabelDataBrowser::TryParseFitsPairFromTxtSelection(const fs::path& txtPath)
     m_HasActivePixelCenter = false;
     m_ActivePixelX = 0;
     m_ActivePixelY = 0;
+    m_TxtTargets.clear();
+    m_SelectedTxtTargetIndex = -1;
 
-    std::string fileDir, alignedName, templateName, err;
-    bool hasPixelCenter = false;
-    int px = 0, py = 0;
-    if (!ParseFirstFitsPairFromTxt(txtPath, fileDir, alignedName, templateName, hasPixelCenter, px, py, err)) {
+    std::string err;
+    if (!ParseAllTargetsFromTxt(txtPath, m_TxtTargets, err)) {
         m_LastParseMessage = "解析失败: " + err;
         return;
     }
 
+    m_NewFitsSourceTxtPath = txtPath.string();
+    // Default to first target record
+    SelectTxtTargetIndex(0, /*triggerReload*/ true);
+}
+
+void LabelDataBrowser::SetActivePixelCenter(int pixelX, int pixelY) {
+    m_HasActivePixelCenter = true;
+    m_ActivePixelX = pixelX;
+    m_ActivePixelY = pixelY;
+
+    // Changing center should re-apply ROI/highlight and recenter camera.
+    m_RequestCenterCameraOnRoi = true;
+    if (!m_NewAlignedFitsPath.empty() || !m_NewTemplateFitsPath.empty()) {
+        m_HasNewFitsPair = true;
+    }
+}
+
+void LabelDataBrowser::SelectTxtTargetIndex(int idx, bool triggerReload) {
+    if (idx < 0 || idx >= static_cast<int>(m_TxtTargets.size())) return;
+    m_SelectedTxtTargetIndex = idx;
+
+    const auto& rec = m_TxtTargets[idx];
+
+    // Resolve file paths for this record
     fs::path alignedCandidate;
     fs::path templateCandidate;
 
     try {
-        fs::path fileDirPath(fileDir);
-        fs::path alignedPath(alignedName);
-        fs::path templatePath(templateName);
+        fs::path fileDirPath(rec.fileDir);
+        fs::path alignedPath(rec.alignedFilename);
+        fs::path templatePath(rec.templateAlignedFilename);
 
         alignedCandidate = alignedPath.is_absolute() ? alignedPath : (fileDirPath / alignedPath);
         templateCandidate = templatePath.is_absolute() ? templatePath : (fileDirPath / templatePath);
@@ -246,7 +267,7 @@ void LabelDataBrowser::TryParseFitsPairFromTxtSelection(const fs::path& txtPath)
         return;
     }
 
-    // Try to resolve within common local roots (useful if txt contains remote drive paths like E:\...)
+    // Try to resolve within common local roots (useful if txt contains remote drive paths like E:\\...)
     const fs::path cwd = fs::current_path();
     std::vector<fs::path> roots = {
         cwd,
@@ -260,18 +281,17 @@ void LabelDataBrowser::TryParseFitsPairFromTxtSelection(const fs::path& txtPath)
 
     m_NewAlignedFitsPath = alignedCandidate.string();
     m_NewTemplateFitsPath = templateCandidate.string();
-    m_NewFitsSourceTxtPath = txtPath.string();
 
-    m_HasPixelCenter = hasPixelCenter;
-    m_PixelX = px;
-    m_PixelY = py;
+    m_HasPixelCenter = rec.hasPixelCenter;
+    m_PixelX = rec.pixelX;
+    m_PixelY = rec.pixelY;
 
-    // Default active center to parsed center (may be overridden by preview clicks).
-    m_HasActivePixelCenter = hasPixelCenter;
-    m_ActivePixelX = px;
-    m_ActivePixelY = py;
+    // Default active center to record center
+    m_HasActivePixelCenter = rec.hasPixelCenter;
+    m_ActivePixelX = rec.pixelX;
+    m_ActivePixelY = rec.pixelY;
 
-    // Clamp ROI radius to requested range; keep enabled by default when we have pixel center.
+    // Clamp UI parameters
     if (m_RoiRadius < 50) m_RoiRadius = 50;
     if (m_RoiRadius > 500) m_RoiRadius = 500;
     if (m_HighlightSizePixels < 1) m_HighlightSizePixels = 1;
@@ -279,29 +299,21 @@ void LabelDataBrowser::TryParseFitsPairFromTxtSelection(const fs::path& txtPath)
     if (m_HighlightPointSizeScale < 1.0f) m_HighlightPointSizeScale = 1.0f;
     if (m_HighlightPointSizeScale > 20.0f) m_HighlightPointSizeScale = 20.0f;
     if (!m_HasPixelCenter) {
-        // If we don't have pixel center, ROI cannot be applied.
         m_RoiEnabled = false;
     }
 
-    m_HasNewFitsPair = true;
-
     std::ostringstream oss;
-    oss << "OK: aligned=" << alignedName << ", template=" << templateName;
-    if (m_HasPixelCenter) {
-        oss << ", pixel=(" << m_PixelX << "," << m_PixelY << ")";
+    oss << "OK: targets=" << m_TxtTargets.size()
+        << ", selected=" << rec.index
+        << ", pixel=(" << rec.pixelX << "," << rec.pixelY << ")";
+    if (rec.hasRaDec) {
+        oss << ", ra/dec=(" << rec.ra << "," << rec.dec << ")";
     }
     m_LastParseMessage = oss.str();
-}
 
-void LabelDataBrowser::SetActivePixelCenter(int pixelX, int pixelY) {
-    m_HasActivePixelCenter = true;
-    m_ActivePixelX = pixelX;
-    m_ActivePixelY = pixelY;
-
-    // Changing center should re-apply ROI/highlight and recenter camera.
-    m_RequestCenterCameraOnRoi = true;
-    if (!m_NewAlignedFitsPath.empty() || !m_NewTemplateFitsPath.empty()) {
+    if (triggerReload) {
         m_HasNewFitsPair = true;
+        m_RequestCenterCameraOnRoi = true;
     }
 }
 
@@ -367,6 +379,56 @@ void LabelDataBrowser::Render() {
                 if (!m_NewAlignedFitsPath.empty() || !m_NewTemplateFitsPath.empty()) {
                     ImGui::Text("Aligned FITS: %s", m_NewAlignedFitsPath.c_str());
                     ImGui::Text("Template FITS: %s", m_NewTemplateFitsPath.c_str());
+                }
+            }
+
+            // If this is a txt with multiple targets, show a picker list.
+            if (fs::path(m_SelectedPath).extension().string() == ".txt" && !m_TxtTargets.empty()) {
+                ImGui::Separator();
+                ImGui::Text("Targets in txt: %d", static_cast<int>(m_TxtTargets.size()));
+
+                ImGui::BeginChild("TxtTargets", ImVec2(0, 160), true);
+                ImGui::Columns(5, "TxtTargetCols");
+                ImGui::TextUnformatted("idx"); ImGui::NextColumn();
+                ImGui::TextUnformatted("pixel_x"); ImGui::NextColumn();
+                ImGui::TextUnformatted("pixel_y"); ImGui::NextColumn();
+                ImGui::TextUnformatted("ra"); ImGui::NextColumn();
+                ImGui::TextUnformatted("dec"); ImGui::NextColumn();
+                ImGui::Separator();
+
+                for (int i = 0; i < static_cast<int>(m_TxtTargets.size()); i++) {
+                    const auto& rec = m_TxtTargets[i];
+                    const bool selected = (i == m_SelectedTxtTargetIndex);
+                    ImGui::PushID(i);
+
+                    if (ImGui::Selectable(rec.index.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns)) {
+                        SelectTxtTargetIndex(i, /*triggerReload*/ true);
+                    }
+                    ImGui::NextColumn();
+
+                    ImGui::Text("%d", rec.pixelX); ImGui::NextColumn();
+                    ImGui::Text("%d", rec.pixelY); ImGui::NextColumn();
+                    if (rec.hasRaDec) {
+                        ImGui::Text("%.6f", rec.ra);
+                    } else {
+                        ImGui::TextUnformatted("-");
+                    }
+                    ImGui::NextColumn();
+                    if (rec.hasRaDec) {
+                        ImGui::Text("%.6f", rec.dec);
+                    } else {
+                        ImGui::TextUnformatted("-");
+                    }
+                    ImGui::NextColumn();
+
+                    ImGui::PopID();
+                }
+
+                ImGui::Columns(1);
+                ImGui::EndChild();
+
+                if (m_HasActivePixelCenter) {
+                    ImGui::Text("Active Center: (%d, %d)", m_ActivePixelX, m_ActivePixelY);
                 }
             }
 

@@ -50,10 +50,24 @@ public:
     bool HasCenterCameraOnRoiRequest() const { return m_RequestCenterCameraOnRoi; }
     void ClearCenterCameraOnRoiRequest() { m_RequestCenterCameraOnRoi = false; }
 
+    struct TxtTargetRecord {
+        std::string index;
+        std::string fileDir;
+        std::string alignedFilename;
+        std::string templateAlignedFilename;
+        bool hasPixelCenter{false};
+        int pixelX{0};
+        int pixelY{0};
+        bool hasRaDec{false};
+        double ra{0.0};
+        double dec{0.0};
+    };
+
 private:
     void ResolveRootPath();
     void RenderDirectoryTree(const std::filesystem::path& dir);
     void TryParseFitsPairFromTxtSelection(const std::filesystem::path& txtPath);
+    void SelectTxtTargetIndex(int idx, bool triggerReload);
 
     struct CachedEntry {
         std::filesystem::path path;
@@ -85,6 +99,9 @@ private:
     bool m_HasActivePixelCenter;
     int m_ActivePixelX;
     int m_ActivePixelY;
+
+    std::vector<TxtTargetRecord> m_TxtTargets;
+    int m_SelectedTxtTargetIndex;
 
     bool m_RoiEnabled;
     int m_RoiRadius;
