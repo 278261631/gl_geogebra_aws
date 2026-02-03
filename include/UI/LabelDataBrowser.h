@@ -32,6 +32,12 @@ public:
     int GetPixelX() const { return m_PixelX; }
     int GetPixelY() const { return m_PixelY; }
 
+    // Active pixel center (may be changed by clicking preview)
+    bool HasActivePixelCenter() const { return m_HasActivePixelCenter; }
+    int GetActivePixelX() const { return m_ActivePixelX; }
+    int GetActivePixelY() const { return m_ActivePixelY; }
+    void SetActivePixelCenter(int pixelX, int pixelY);
+
     // ROI controls for filtering points around (pixel_x, pixel_y)
     bool IsRoiEnabled() const { return m_RoiEnabled; }
     int GetRoiRadius() const { return m_RoiRadius; }
@@ -75,6 +81,10 @@ private:
     bool m_HasPixelCenter;
     int m_PixelX;
     int m_PixelY;
+
+    bool m_HasActivePixelCenter;
+    int m_ActivePixelX;
+    int m_ActivePixelY;
 
     bool m_RoiEnabled;
     int m_RoiRadius;

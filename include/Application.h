@@ -85,6 +85,16 @@ private:
     unsigned int m_TemplatePreviewTex;
     int m_AlignedPreviewSize;
     int m_TemplatePreviewSize;
+    int m_AlignedPreviewCenterX;
+    int m_AlignedPreviewCenterY;
+    int m_TemplatePreviewCenterX;
+    int m_TemplatePreviewCenterY;
+    bool m_HasAlignedPreviewClick;
+    bool m_HasTemplatePreviewClick;
+    int m_AlignedPreviewClickX;
+    int m_AlignedPreviewClickY;
+    int m_TemplatePreviewClickX;
+    int m_TemplatePreviewClickY;
     std::string m_AlignedPreviewName;
     std::string m_TemplatePreviewName;
 };

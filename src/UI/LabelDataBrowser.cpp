@@ -50,6 +50,9 @@ LabelDataBrowser::LabelDataBrowser()
     , m_HasPixelCenter(false)
     , m_PixelX(0)
     , m_PixelY(0)
+    , m_HasActivePixelCenter(false)
+    , m_ActivePixelX(0)
+    , m_ActivePixelY(0)
     , m_RoiEnabled(true)
     , m_RoiRadius(200)
     , m_HighlightSizePixels(10)
@@ -216,6 +219,9 @@ void LabelDataBrowser::TryParseFitsPairFromTxtSelection(const fs::path& txtPath)
     m_HasPixelCenter = false;
     m_PixelX = 0;
     m_PixelY = 0;
+    m_HasActivePixelCenter = false;
+    m_ActivePixelX = 0;
+    m_ActivePixelY = 0;
 
     std::string fileDir, alignedName, templateName, err;
     bool hasPixelCenter = false;
@@ -260,6 +266,11 @@ void LabelDataBrowser::TryParseFitsPairFromTxtSelection(const fs::path& txtPath)
     m_PixelX = px;
     m_PixelY = py;
 
+    // Default active center to parsed center (may be overridden by preview clicks).
+    m_HasActivePixelCenter = hasPixelCenter;
+    m_ActivePixelX = px;
+    m_ActivePixelY = py;
+
     // Clamp ROI radius to requested range; keep enabled by default when we have pixel center.
     if (m_RoiRadius < 50) m_RoiRadius = 50;
     if (m_RoiRadius > 500) m_RoiRadius = 500;
@@ -280,6 +291,18 @@ void LabelDataBrowser::TryParseFitsPairFromTxtSelection(const fs::path& txtPath)
         oss << ", pixel=(" << m_PixelX << "," << m_PixelY << ")";
     }
     m_LastParseMessage = oss.str();
+}
+
+void LabelDataBrowser::SetActivePixelCenter(int pixelX, int pixelY) {
+    m_HasActivePixelCenter = true;
+    m_ActivePixelX = pixelX;
+    m_ActivePixelY = pixelY;
+
+    // Changing center should re-apply ROI/highlight and recenter camera.
+    m_RequestCenterCameraOnRoi = true;
+    if (!m_NewAlignedFitsPath.empty() || !m_NewTemplateFitsPath.empty()) {
+        m_HasNewFitsPair = true;
+    }
 }
 
 void LabelDataBrowser::Render() {

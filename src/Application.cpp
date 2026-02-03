@@ -24,6 +24,16 @@ Application::Application()
     , m_TemplatePreviewTex(0)
     , m_AlignedPreviewSize(0)
     , m_TemplatePreviewSize(0)
+    , m_AlignedPreviewCenterX(0)
+    , m_AlignedPreviewCenterY(0)
+    , m_TemplatePreviewCenterX(0)
+    , m_TemplatePreviewCenterY(0)
+    , m_HasAlignedPreviewClick(false)
+    , m_HasTemplatePreviewClick(false)
+    , m_AlignedPreviewClickX(0)
+    , m_AlignedPreviewClickY(0)
+    , m_TemplatePreviewClickX(0)
+    , m_TemplatePreviewClickY(0)
 {
 }
 
@@ -162,9 +172,9 @@ void Application::Update(float deltaTime) {
     if (labelBrowser && labelBrowser->HasCenterCameraOnRoiRequest()) {
         labelBrowser->ClearCenterCameraOnRoiRequest();
 
-        if (labelBrowser->HasPixelCenter()) {
-            const int roiX = labelBrowser->GetPixelX();
-            const int roiY = labelBrowser->GetPixelY();
+        if (labelBrowser->HasActivePixelCenter()) {
+            const int roiX = labelBrowser->GetActivePixelX();
+            const int roiY = labelBrowser->GetActivePixelY();
 
             // Prefer aligned FITS if present, otherwise template FITS.
             std::string fitsPath = labelBrowser->GetNewAlignedFitsPath();
@@ -213,16 +223,16 @@ void Application::Update(float deltaTime) {
         std::cout << "  aligned:  " << alignedFits << std::endl;
         std::cout << "  template: " << templateFits << std::endl;
 
-        const bool useRoi = labelBrowser->HasPixelCenter() && labelBrowser->IsRoiEnabled();
-        const int roiX = labelBrowser->GetPixelX();
-        const int roiY = labelBrowser->GetPixelY();
+        const bool useRoi = labelBrowser->HasActivePixelCenter() && labelBrowser->IsRoiEnabled();
+        const int roiX = labelBrowser->HasActivePixelCenter() ? labelBrowser->GetActivePixelX() : labelBrowser->GetPixelX();
+        const int roiY = labelBrowser->HasActivePixelCenter() ? labelBrowser->GetActivePixelY() : labelBrowser->GetPixelY();
         int roiR = labelBrowser->GetRoiRadius();
         if (roiR < 50) roiR = 50;
         if (roiR > 500) roiR = 500;
 
         // Auto center camera on ROI center when switching targets, but keep current zoom (distance).
         // We load one of the FITS once to compute the world-space Y at (roiX, roiY).
-        if (labelBrowser->HasPixelCenter()) {
+        if (labelBrowser->HasActivePixelCenter()) {
             std::string centerFits = alignedFits;
             if (centerFits.empty() || !fs::exists(fs::path(centerFits))) {
                 centerFits = templateFits;
@@ -237,7 +247,7 @@ void Application::Update(float deltaTime) {
         if (!alignedFits.empty() && fs::exists(fs::path(alignedFits))) {
             // Highlight 10x10 around ROI center:
             // aligned -> orange-red, template -> sky-blue
-            const bool doHighlight = labelBrowser->HasPixelCenter();
+            const bool doHighlight = labelBrowser->HasActivePixelCenter();
             int highlightSize = labelBrowser->GetHighlightSizePixels();
             if (highlightSize < 1) highlightSize = 1;
             if (highlightSize > 300) highlightSize = 300;
@@ -253,7 +263,7 @@ void Application::Update(float deltaTime) {
         }
 
         if (!templateFits.empty() && fs::exists(fs::path(templateFits))) {
-            const bool doHighlight = labelBrowser->HasPixelCenter();
+            const bool doHighlight = labelBrowser->HasActivePixelCenter();
             int highlightSize = labelBrowser->GetHighlightSizePixels();
             if (highlightSize < 1) highlightSize = 1;
             if (highlightSize > 300) highlightSize = 300;
@@ -369,9 +379,13 @@ void Application::UpdatePreviewTextureFromCurrentImage(int previewSlot,
     unsigned int* texPtr = (previewSlot == 1) ? &m_AlignedPreviewTex : &m_TemplatePreviewTex;
     int* sizePtr = (previewSlot == 1) ? &m_AlignedPreviewSize : &m_TemplatePreviewSize;
     std::string* namePtr = (previewSlot == 1) ? &m_AlignedPreviewName : &m_TemplatePreviewName;
+    int* centerXPtr = (previewSlot == 1) ? &m_AlignedPreviewCenterX : &m_TemplatePreviewCenterX;
+    int* centerYPtr = (previewSlot == 1) ? &m_AlignedPreviewCenterY : &m_TemplatePreviewCenterY;
 
     EnsureTexture2D(*texPtr);
     *sizePtr = cropSizePixels;
+    *centerXPtr = cropCenterX;
+    *centerYPtr = cropCenterY;
     try {
         *namePtr = std::filesystem::path(filepath).filename().string();
     } catch (...) {
@@ -476,20 +490,98 @@ void Application::RenderFitsRoiPreviewWindow() {
 
     const float targetImageW = 280.0f; // keep aspect correct and stable
 
-    auto drawPreview = [&](const char* label, unsigned int tex, const std::string& name) {
+    auto drawCrosshairHollow = [&](ImDrawList* dl, const ImVec2& center, ImU32 col) {
+        const float len = 16.0f;
+        const float gap = 4.0f;
+        const float thick = 2.0f;
+        // Horizontal segments
+        dl->AddLine(ImVec2(center.x - len, center.y), ImVec2(center.x - gap, center.y), col, thick);
+        dl->AddLine(ImVec2(center.x + gap, center.y), ImVec2(center.x + len, center.y), col, thick);
+        // Vertical segments
+        dl->AddLine(ImVec2(center.x, center.y - len), ImVec2(center.x, center.y - gap), col, thick);
+        dl->AddLine(ImVec2(center.x, center.y + gap), ImVec2(center.x, center.y + len), col, thick);
+    };
+
+    auto drawPreview = [&](int previewSlot, const char* label, unsigned int tex, const std::string& name) {
         ImGui::Text("%s: %s", label, name.empty() ? "(none)" : name.c_str());
         if (tex != 0) {
             // Keep aspect ratio correct (our preview textures are square crops).
             ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(tex)), ImVec2(targetImageW, targetImageW));
+
+            // Handle click -> update ROI center and request reload/center camera.
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && m_UIManager && m_UIManager->GetLabelDataBrowser()) {
+                LabelDataBrowser* lb = m_UIManager->GetLabelDataBrowser();
+                const ImVec2 p0 = ImGui::GetItemRectMin();
+                const ImVec2 p1 = ImGui::GetItemRectMax();
+                const ImVec2 mp = ImGui::GetIO().MousePos;
+
+                const float u = (p1.x > p0.x) ? (mp.x - p0.x) / (p1.x - p0.x) : 0.0f;
+                const float v = (p1.y > p0.y) ? (mp.y - p0.y) / (p1.y - p0.y) : 0.0f;
+
+                int cropSize = (previewSlot == 1) ? m_AlignedPreviewSize : m_TemplatePreviewSize;
+                int cropCenterX = (previewSlot == 1) ? m_AlignedPreviewCenterX : m_TemplatePreviewCenterX;
+                int cropCenterY = (previewSlot == 1) ? m_AlignedPreviewCenterY : m_TemplatePreviewCenterY;
+                cropSize = std::max(1, cropSize);
+
+                const int half = cropSize / 2;
+                const int xStart = cropCenterX - half;
+                const int yStart = cropCenterY - half;
+
+                const int clickX = xStart + static_cast<int>(std::clamp(u, 0.0f, 0.999999f) * cropSize);
+                const int clickY = yStart + static_cast<int>(std::clamp(v, 0.0f, 0.999999f) * cropSize);
+
+                // Save for crosshair rendering (in pixel coordinates)
+                if (previewSlot == 1) {
+                    m_HasAlignedPreviewClick = true;
+                    m_AlignedPreviewClickX = clickX;
+                    m_AlignedPreviewClickY = clickY;
+                } else {
+                    m_HasTemplatePreviewClick = true;
+                    m_TemplatePreviewClickX = clickX;
+                    m_TemplatePreviewClickY = clickY;
+                }
+
+                lb->SetActivePixelCenter(clickX, clickY);
+            }
+
+            // Draw crosshair overlay at last clicked pixel
+            {
+                const bool hasClick = (previewSlot == 1) ? m_HasAlignedPreviewClick : m_HasTemplatePreviewClick;
+                if (hasClick) {
+                    const int cropSize = (previewSlot == 1) ? m_AlignedPreviewSize : m_TemplatePreviewSize;
+                    const int cropCenterX = (previewSlot == 1) ? m_AlignedPreviewCenterX : m_TemplatePreviewCenterX;
+                    const int cropCenterY = (previewSlot == 1) ? m_AlignedPreviewCenterY : m_TemplatePreviewCenterY;
+                    const int clickX = (previewSlot == 1) ? m_AlignedPreviewClickX : m_TemplatePreviewClickX;
+                    const int clickY = (previewSlot == 1) ? m_AlignedPreviewClickY : m_TemplatePreviewClickY;
+
+                    const int half = std::max(1, cropSize) / 2;
+                    const int xStart = cropCenterX - half;
+                    const int yStart = cropCenterY - half;
+
+                    const float u = (static_cast<float>(clickX - xStart) + 0.5f) / static_cast<float>(std::max(1, cropSize));
+                    const float v = (static_cast<float>(clickY - yStart) + 0.5f) / static_cast<float>(std::max(1, cropSize));
+
+                    const ImVec2 p0 = ImGui::GetItemRectMin();
+                    const ImVec2 p1 = ImGui::GetItemRectMax();
+                    const ImVec2 center(p0.x + std::clamp(u, 0.0f, 1.0f) * (p1.x - p0.x),
+                                        p0.y + std::clamp(v, 0.0f, 1.0f) * (p1.y - p0.y));
+
+                    ImDrawList* dl = ImGui::GetWindowDrawList();
+                    const ImU32 col = (previewSlot == 1)
+                        ? IM_COL32(255, 69, 0, 255)   // aligned: OrangeRed
+                        : IM_COL32(30, 144, 255, 255); // template: DodgerBlue
+                    drawCrosshairHollow(dl, center, col);
+                }
+            }
         } else {
             ImGui::Dummy(ImVec2(targetImageW, targetImageW));
             ImGui::TextUnformatted("(no preview)");
         }
     };
 
-    drawPreview("aligned", m_AlignedPreviewTex, m_AlignedPreviewName);
+    drawPreview(1, "aligned", m_AlignedPreviewTex, m_AlignedPreviewName);
     ImGui::Separator();
-    drawPreview("template", m_TemplatePreviewTex, m_TemplatePreviewName);
+    drawPreview(2, "template", m_TemplatePreviewTex, m_TemplatePreviewName);
 
     ImGui::End();
 }
