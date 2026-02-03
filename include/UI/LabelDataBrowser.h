@@ -38,6 +38,7 @@ public:
 
     // Highlight controls (recolor a square region around pixel center)
     int GetHighlightSizePixels() const { return m_HighlightSizePixels; }
+    float GetHighlightPointSizeScale() const { return m_HighlightPointSizeScale; }
 
     // Event: center camera view/rotation on ROI center (pixel_x, pixel_y)
     bool HasCenterCameraOnRoiRequest() const { return m_RequestCenterCameraOnRoi; }
@@ -78,6 +79,7 @@ private:
     bool m_RoiEnabled;
     int m_RoiRadius;
     int m_HighlightSizePixels;
+    float m_HighlightPointSizeScale;
     bool m_RequestCenterCameraOnRoi;
 
     // Cache directory listings so the UI doesn't re-scan the filesystem every frame.

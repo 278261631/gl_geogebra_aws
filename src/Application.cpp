@@ -206,9 +206,12 @@ void Application::Update(float deltaTime) {
             int highlightSize = labelBrowser->GetHighlightSizePixels();
             if (highlightSize < 1) highlightSize = 1;
             if (highlightSize > 300) highlightSize = 300;
+            float highlightScale = labelBrowser->GetHighlightPointSizeScale();
+            if (highlightScale < 1.0f) highlightScale = 1.0f;
+            if (highlightScale > 20.0f) highlightScale = 20.0f;
             const glm::vec4 alignedHighlight(1.0f, 0.2706f, 0.0f, 1.0f);   // OrangeRed (#FF4500)
             LoadImageAndGeneratePointsInternal(alignedFits, /*replaceExisting*/ true, useRoi, roiX, roiY, roiR,
-                                               doHighlight, roiX, roiY, highlightSize, alignedHighlight);
+                                               doHighlight, roiX, roiY, highlightSize, alignedHighlight, highlightScale);
         } else {
             std::cerr << "Aligned FITS not found: " << alignedFits << std::endl;
         }
@@ -218,9 +221,12 @@ void Application::Update(float deltaTime) {
             int highlightSize = labelBrowser->GetHighlightSizePixels();
             if (highlightSize < 1) highlightSize = 1;
             if (highlightSize > 300) highlightSize = 300;
+            float highlightScale = labelBrowser->GetHighlightPointSizeScale();
+            if (highlightScale < 1.0f) highlightScale = 1.0f;
+            if (highlightScale > 20.0f) highlightScale = 20.0f;
             const glm::vec4 templateHighlight(0.5294f, 0.8078f, 0.9216f, 1.0f); // SkyBlue (#87CEEB)
             LoadImageAndGeneratePointsInternal(templateFits, /*replaceExisting*/ true, useRoi, roiX, roiY, roiR,
-                                               doHighlight, roiX, roiY, highlightSize, templateHighlight);
+                                               doHighlight, roiX, roiY, highlightSize, templateHighlight, highlightScale);
         } else {
             std::cerr << "Template FITS not found: " << templateFits << std::endl;
         }
@@ -284,7 +290,7 @@ void Application::RemoveGeometryObject(std::shared_ptr<GeometryObject> object) {
 void Application::LoadImageAndGeneratePoints(const std::string& filepath) {
     // Normal image loading: keep previous behavior (skip if already loaded).
     LoadImageAndGeneratePointsInternal(filepath, /*replaceExisting*/ false, /*useRoi*/ false, 0, 0, 0,
-                                       /*useHighlight*/ false, 0, 0, 0, glm::vec4(0.0f));
+                                       /*useHighlight*/ false, 0, 0, 0, glm::vec4(0.0f), 1.0f);
 }
 
 void Application::LoadImageAndGeneratePointsInternal(const std::string& filepath,
@@ -297,7 +303,8 @@ void Application::LoadImageAndGeneratePointsInternal(const std::string& filepath
                                                      int highlightCenterX,
                                                      int highlightCenterY,
                                                      int highlightSizePixels,
-                                                     const glm::vec4& highlightColor) {
+                                                     const glm::vec4& highlightColor,
+                                                     float highlightPointSizeScale) {
     if (!replaceExisting) {
         // Check if already loaded
         if (m_ImagePointsMap.find(filepath) != m_ImagePointsMap.end()) {
@@ -324,23 +331,29 @@ void Application::LoadImageAndGeneratePointsInternal(const std::string& filepath
 
     std::vector<glm::vec3> positions;
     std::vector<glm::vec4> colors;
+    std::vector<glm::vec3> highlightPositions;
+    std::vector<glm::vec4> highlightColors;
 
-    if (useRoi) {
-        if (useHighlight) {
-            m_ImageLoader->GeneratePointCloudWithColorsROIHighlight(
-                positions, colors,
-                roiPixelX, roiPixelY, roiRadiusPixels,
-                highlightCenterX, highlightCenterY, highlightSizePixels, highlightColor,
-                scaleX, scaleY, scaleZ);
-        } else {
-            m_ImageLoader->GeneratePointCloudWithColorsROI(positions, colors, roiPixelX, roiPixelY, roiRadiusPixels, scaleX, scaleY, scaleZ);
+    // For highlight rendering, we split highlight points into a separate buffer so we can render them larger.
+    if (useHighlight) {
+        if (highlightPointSizeScale < 1.0f) highlightPointSizeScale = 1.0f;
+        if (highlightPointSizeScale > 20.0f) highlightPointSizeScale = 20.0f;
+
+        int effectiveRadius = roiRadiusPixels;
+        if (!useRoi) {
+            // Use a large ROI to cover the entire image, but still allow highlight split logic.
+            effectiveRadius = std::max(m_ImageLoader->GetWidth(), m_ImageLoader->GetHeight());
         }
+
+        m_ImageLoader->GeneratePointCloudWithColorsROISplitHighlight(
+            positions, colors,
+            highlightPositions, highlightColors,
+            roiPixelX, roiPixelY, effectiveRadius,
+            highlightCenterX, highlightCenterY, highlightSizePixels, highlightColor,
+            scaleX, scaleY, scaleZ);
     } else {
-        if (useHighlight) {
-            m_ImageLoader->GeneratePointCloudWithColorsHighlight(
-                positions, colors,
-                highlightCenterX, highlightCenterY, highlightSizePixels, highlightColor,
-                scaleX, scaleY, scaleZ);
+        if (useRoi) {
+            m_ImageLoader->GeneratePointCloudWithColorsROI(positions, colors, roiPixelX, roiPixelY, roiRadiusPixels, scaleX, scaleY, scaleZ);
         } else {
             m_ImageLoader->GeneratePointCloudWithColors(positions, colors, scaleX, scaleY, scaleZ);
         }
@@ -360,10 +373,12 @@ void Application::LoadImageAndGeneratePointsInternal(const std::string& filepath
         std::cout << "Camera adjusted to frame image (size: " << imageDiagonal << " units)" << std::endl;
     }
 
-    // Create a single PointCloud object for all points
+    // Create point cloud(s)
+    const float basePointSize = 3.0f;
+
     auto pointCloud = std::make_shared<PointCloud>();
     pointCloud->SetPointData(positions, colors);
-    pointCloud->SetPointSize(3.0f);
+    pointCloud->SetPointSize(basePointSize);
     pointCloud->SetName("PointCloud_" + filepath);
     pointCloud->Initialize();
 
@@ -372,6 +387,17 @@ void Application::LoadImageAndGeneratePointsInternal(const std::string& filepath
     // Store the point cloud associated with this image
     std::vector<std::shared_ptr<GeometryObject>> imageObjects;
     imageObjects.push_back(pointCloud);
+
+    if (useHighlight && !highlightPositions.empty()) {
+        auto highlightCloud = std::make_shared<PointCloud>();
+        highlightCloud->SetPointData(highlightPositions, highlightColors);
+        highlightCloud->SetPointSize(basePointSize * highlightPointSizeScale);
+        highlightCloud->SetName("PointCloud_" + filepath + "_highlight");
+        highlightCloud->Initialize();
+        AddGeometryObject(highlightCloud);
+        imageObjects.push_back(highlightCloud);
+    }
+
     m_ImagePointsMap[filepath] = imageObjects;
 
     std::cout << "Point cloud created with " << positions.size() << " points (1 draw call)" << std::endl;

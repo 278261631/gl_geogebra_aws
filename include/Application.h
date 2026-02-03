@@ -49,7 +49,8 @@ private:
                                             int highlightCenterX,
                                             int highlightCenterY,
                                             int highlightSizePixels,
-                                            const glm::vec4& highlightColor);
+                                            const glm::vec4& highlightColor,
+                                            float highlightPointSizeScale);
 
     std::unique_ptr<Window> m_Window;
     std::unique_ptr<Renderer> m_Renderer;

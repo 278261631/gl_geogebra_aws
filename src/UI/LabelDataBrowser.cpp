@@ -53,6 +53,7 @@ LabelDataBrowser::LabelDataBrowser()
     , m_RoiEnabled(true)
     , m_RoiRadius(200)
     , m_HighlightSizePixels(10)
+    , m_HighlightPointSizeScale(4.0f)
     , m_RequestCenterCameraOnRoi(false) {
     ResolveRootPath();
 }
@@ -264,6 +265,8 @@ void LabelDataBrowser::TryParseFitsPairFromTxtSelection(const fs::path& txtPath)
     if (m_RoiRadius > 500) m_RoiRadius = 500;
     if (m_HighlightSizePixels < 1) m_HighlightSizePixels = 1;
     if (m_HighlightSizePixels > 300) m_HighlightSizePixels = 300;
+    if (m_HighlightPointSizeScale < 1.0f) m_HighlightPointSizeScale = 1.0f;
+    if (m_HighlightPointSizeScale > 20.0f) m_HighlightPointSizeScale = 20.0f;
     if (!m_HasPixelCenter) {
         // If we don't have pixel center, ROI cannot be applied.
         m_RoiEnabled = false;
@@ -351,6 +354,7 @@ void LabelDataBrowser::Render() {
                 ImGui::Checkbox("Only show neighborhood points (ROI)", &m_RoiEnabled);
                 ImGui::SliderInt("ROI radius (pixels)", &m_RoiRadius, 50, 500);
                 ImGui::SliderInt("Highlight size (pixels)", &m_HighlightSizePixels, 1, 300);
+                ImGui::SliderFloat("Highlight point size (scale)", &m_HighlightPointSizeScale, 1.0f, 20.0f, "%.1fx");
                 if (ImGui::Button("Reload FITS with ROI")) {
                     // Trigger the event again with current ROI settings
                     if (!m_NewAlignedFitsPath.empty() || !m_NewTemplateFitsPath.empty()) {

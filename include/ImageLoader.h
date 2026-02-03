@@ -78,6 +78,22 @@ public:
                                                   float scaleY = 1.0f,
                                                   float scaleZ = 1.0f) const;
 
+    // Split highlight points into a separate output buffer so they can be rendered with a different point size.
+    void GeneratePointCloudWithColorsROISplitHighlight(std::vector<glm::vec3>& positions,
+                                                       std::vector<glm::vec4>& colors,
+                                                       std::vector<glm::vec3>& highlightPositions,
+                                                       std::vector<glm::vec4>& highlightColors,
+                                                       int pixelX,
+                                                       int pixelY,
+                                                       int radiusPixels,
+                                                       int highlightCenterX,
+                                                       int highlightCenterY,
+                                                       int highlightSizePixels,
+                                                       const glm::vec4& highlightColor,
+                                                       float scaleX = 1.0f,
+                                                       float scaleY = 1.0f,
+                                                       float scaleZ = 1.0f) const;
+
 private:
     bool LoadStandardImage(const std::string& filepath);
     bool LoadFitsImage(const std::string& filepath);
