@@ -40,6 +40,7 @@ private:
     void Update(float deltaTime);
     void Render();
     void RenderFitsRoiPreviewWindow();
+    void CenterCameraOnPixelInCurrentImage(int pixelX, int pixelY);
 
     void LoadImageAndGeneratePointsInternal(const std::string& filepath,
                                             bool replaceExisting,
@@ -77,6 +78,7 @@ private:
 
     bool m_Running;
     float m_LastFrameTime;
+    bool m_HasFramedView;
 
     // ROI preview textures (aligned/template)
     unsigned int m_AlignedPreviewTex;

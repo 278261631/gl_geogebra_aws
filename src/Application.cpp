@@ -19,6 +19,7 @@
 Application::Application()
     : m_Running(false)
     , m_LastFrameTime(0.0f)
+    , m_HasFramedView(false)
     , m_AlignedPreviewTex(0)
     , m_TemplatePreviewTex(0)
     , m_AlignedPreviewSize(0)
@@ -219,6 +220,20 @@ void Application::Update(float deltaTime) {
         if (roiR < 50) roiR = 50;
         if (roiR > 500) roiR = 500;
 
+        // Auto center camera on ROI center when switching targets, but keep current zoom (distance).
+        // We load one of the FITS once to compute the world-space Y at (roiX, roiY).
+        if (labelBrowser->HasPixelCenter()) {
+            std::string centerFits = alignedFits;
+            if (centerFits.empty() || !fs::exists(fs::path(centerFits))) {
+                centerFits = templateFits;
+            }
+            if (!centerFits.empty() && fs::exists(fs::path(centerFits))) {
+                if (m_ImageLoader->LoadImage(centerFits)) {
+                    CenterCameraOnPixelInCurrentImage(roiX, roiY);
+                }
+            }
+        }
+
         if (!alignedFits.empty() && fs::exists(fs::path(alignedFits))) {
             // Highlight 10x10 around ROI center:
             // aligned -> orange-red, template -> sky-blue
@@ -259,6 +274,30 @@ void Application::Update(float deltaTime) {
             object->Update(deltaTime);
         }
     }
+}
+
+void Application::CenterCameraOnPixelInCurrentImage(int pixelX, int pixelY) {
+    if (!m_Camera || !m_ImageLoader || !m_ImageLoader->IsLoaded()) return;
+
+    // Must match the mapping used in LoadImageAndGeneratePointsInternal.
+    const float scaleX = 0.1f;
+    const float scaleY = 10.0f;
+    const float scaleZ = 0.1f;
+
+    const float centerX = m_ImageLoader->GetWidth() * 0.5f;
+    const float centerZ = m_ImageLoader->GetHeight() * 0.5f;
+
+    const float height = m_ImageLoader->GetNormalizedPixelValue(pixelX, pixelY) * scaleY;
+    const glm::vec3 newTarget(
+        (pixelX - centerX) * scaleX,
+        height,
+        (pixelY - centerZ) * scaleZ);
+
+    // Keep view direction / zoom stable: translate position by the same delta as target.
+    const glm::vec3 oldTarget = m_Camera->GetTarget();
+    const glm::vec3 delta = newTarget - oldTarget;
+    m_Camera->SetTarget(newTarget);
+    m_Camera->SetPosition(m_Camera->GetPosition() + delta);
 }
 
 void Application::Render() {
@@ -555,10 +594,10 @@ void Application::LoadImageAndGeneratePointsInternal(const std::string& filepath
     float imageDepth = m_ImageLoader->GetHeight() * scaleZ;
     float imageDiagonal = std::sqrt(imageWidth * imageWidth + imageDepth * imageDepth);
 
-    // Auto-frame the camera to view the entire image
-    // Only adjust if this is the first image or if the image is larger than current view
-    if (m_ImagePointsMap.empty() || imageDiagonal > 50.0f) {
+    // Auto-frame camera only once (initial experience). Do NOT re-frame on target switches, so zoom stays stable.
+    if (!m_HasFramedView && !replaceExisting) {
         m_Camera->FrameView(imageDiagonal);
+        m_HasFramedView = true;
         std::cout << "Camera adjusted to frame image (size: " << imageDiagonal << " units)" << std::endl;
     }
 
